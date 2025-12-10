@@ -3,10 +3,12 @@
 // For production, use your deployed Worker URL
 const API_BASE_URL = 'https://medication-tracker-api.seonkim1003.workers.dev';
 
-// Use shared user ID for all users
-function getUserId() {
-    // All users share the same data
-    return 'shared';
+// User names
+const USERS = ['Peter', 'Seonho', 'Angelina'];
+
+// Get user ID for a specific user
+function getUserIdForUser(userName) {
+    return userName.toLowerCase();
 }
 
 // API Client
@@ -90,8 +92,10 @@ class MedicationTracker {
         this.api = new APIClient(API_BASE_URL);
         this.currentDate = new Date();
         this.medications = [];
-        this.entries = {};
+        this.entries = {}; // Structure: { user: { dateKey: { medId: { doses: [...] } } } }
         this.selectedDate = null;
+        this.selectedUsers = ['Peter', 'Seonho', 'Angelina']; // Default: all selected
+        this.currentUser = 'Peter'; // User currently tracking
         this.init();
     }
 
@@ -103,14 +107,41 @@ class MedicationTracker {
 
     async loadData() {
         try {
-            const data = await this.api.getData();
-            this.medications = data.medications || [];
-            this.entries = data.entries || {};
+            // Load data for all users
+            const allData = {};
+            for (const user of USERS) {
+                const userId = getUserIdForUser(user);
+                const apiClient = new APIClient(API_BASE_URL);
+                apiClient.userId = userId;
+                try {
+                    const data = await apiClient.getData();
+                    allData[user] = {
+                        medications: data.medications || [],
+                        entries: data.entries || {}
+                    };
+                } catch (error) {
+                    console.error(`Failed to load data for ${user}:`, error);
+                    allData[user] = { medications: [], entries: {} };
+                }
+            }
+            
+            // Use first user's medications as master list (or merge all)
+            this.medications = allData[USERS[0]].medications || [];
+            
+            // Restructure entries by user
+            this.entries = {};
+            USERS.forEach(user => {
+                this.entries[user] = allData[user].entries || {};
+            });
         } catch (error) {
             console.error('Failed to load data:', error);
-            // Use empty data if API fails
             this.medications = [];
             this.entries = {};
+            USERS.forEach(user => {
+                if (!this.entries[user]) {
+                    this.entries[user] = {};
+                }
+            });
         }
     }
 
@@ -168,6 +199,13 @@ class MedicationTracker {
 
         document.getElementById('dataTab').addEventListener('click', () => {
             this.switchTab('data');
+        });
+
+        // User selection checkboxes
+        document.querySelectorAll('.user-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', () => {
+                this.updateSelectedUsers();
+            });
         });
 
         // Close modals on outside click
@@ -240,27 +278,41 @@ class MedicationTracker {
         }
     }
 
+    updateSelectedUsers() {
+        const checkboxes = document.querySelectorAll('.user-checkbox:checked');
+        this.selectedUsers = Array.from(checkboxes).map(cb => cb.value);
+        this.renderCalendar();
+        if (document.getElementById('dataContent').classList.contains('active')) {
+            this.renderDataView();
+        }
+    }
+
     getMedicationStatus(dateKey) {
-        const dayEntries = this.entries[dateKey] || {};
         const date = new Date(dateKey + 'T00:00:00');
         const statuses = [];
         
-        this.medications.forEach(med => {
-            if (!this.shouldTrackMedication(med, date)) {
-                return; // Skip medications not scheduled for this day
-            }
+        // Get statuses for all selected users
+        this.selectedUsers.forEach(user => {
+            const userEntries = this.entries[user] || {};
+            const dayEntries = userEntries[dateKey] || {};
             
-            const timesPerDay = med.timesPerDay || 1;
-            const medEntries = dayEntries[med.id];
-            
-            for (let i = 0; i < timesPerDay; i++) {
-                if (medEntries && medEntries.doses && medEntries.doses[i]) {
-                    const dose = medEntries.doses[i];
-                    statuses.push(dose.taken ? 'taken' : 'missed');
-                } else {
-                    statuses.push('pending');
+            this.medications.forEach(med => {
+                if (!this.shouldTrackMedication(med, date)) {
+                    return;
                 }
-            }
+                
+                const timesPerDay = med.timesPerDay || 1;
+                const medEntries = dayEntries[med.id];
+                
+                for (let i = 0; i < timesPerDay; i++) {
+                    if (medEntries && medEntries.doses && medEntries.doses[i]) {
+                        const dose = medEntries.doses[i];
+                        statuses.push(dose.taken ? 'taken' : 'missed');
+                    } else {
+                        statuses.push('pending');
+                    }
+                }
+            });
         });
         
         return statuses;
@@ -430,7 +482,15 @@ class MedicationTracker {
         document.querySelectorAll('.day-checkbox').forEach(cb => cb.checked = false);
 
         try {
+            // Save medications for all users (they share the same medication list)
             await this.api.saveMedications(this.medications);
+            // Also save for each user to ensure consistency
+            for (const user of USERS) {
+                const userId = getUserIdForUser(user);
+                const apiClient = new APIClient(API_BASE_URL);
+                apiClient.userId = userId;
+                await apiClient.saveMedications(this.medications);
+            }
             this.renderMedicationList();
             this.renderCalendar();
         } catch (error) {
@@ -451,7 +511,13 @@ class MedicationTracker {
         this.medications = this.medications.filter(m => m.id !== medicationId);
 
         try {
-            await this.api.deleteMedication(medicationId);
+            // Delete medication for all users
+            for (const user of USERS) {
+                const userId = getUserIdForUser(user);
+                const apiClient = new APIClient(API_BASE_URL);
+                apiClient.userId = userId;
+                await apiClient.deleteMedication(medicationId);
+            }
             this.renderMedicationList();
             this.renderCalendar();
         } catch (error) {
@@ -471,8 +537,38 @@ class MedicationTracker {
         });
 
         document.getElementById('trackingDate').textContent = dateStr;
+        
+        // Add user selector in modal
+        this.renderUserSelector();
         this.renderTrackingInterface(dateKey);
         document.getElementById('trackingModal').classList.add('active');
+    }
+
+    renderUserSelector() {
+        // Check if user selector already exists
+        let userSelector = document.getElementById('trackingUserSelector');
+        if (!userSelector) {
+            userSelector = document.createElement('div');
+            userSelector.id = 'trackingUserSelector';
+            userSelector.className = 'tracking-user-selector';
+            const modalBody = document.querySelector('#trackingModal .modal-body');
+            modalBody.insertBefore(userSelector, modalBody.firstChild);
+        }
+        
+        userSelector.innerHTML = `
+            <label>Tracking for: </label>
+            <select id="currentUserSelect">
+                ${USERS.map(user => 
+                    `<option value="${user}" ${user === this.currentUser ? 'selected' : ''}>${user}</option>`
+                ).join('')}
+            </select>
+        `;
+        
+        document.getElementById('currentUserSelect').addEventListener('change', (e) => {
+            this.currentUser = e.target.value;
+            const dateKey = this.formatDateKey(this.selectedDate);
+            this.renderTrackingInterface(dateKey);
+        });
     }
 
     closeTrackingModal() {
@@ -489,7 +585,8 @@ class MedicationTracker {
             return;
         }
 
-        const dayEntries = this.entries[dateKey] || {};
+        const userEntries = this.entries[this.currentUser] || {};
+        const dayEntries = userEntries[dateKey] || {};
         const date = new Date(dateKey + 'T00:00:00');
 
         this.medications.forEach(med => {
@@ -601,53 +698,67 @@ class MedicationTracker {
 
     async trackMedicationDose(dateKey, medicationId, doseIndex, taken) {
         const timestamp = new Date().toISOString();
+        const user = this.currentUser;
+        const userId = getUserIdForUser(user);
 
-        if (!this.entries[dateKey]) {
-            this.entries[dateKey] = {};
+        if (!this.entries[user]) {
+            this.entries[user] = {};
         }
 
-        if (!this.entries[dateKey][medicationId]) {
-            this.entries[dateKey][medicationId] = { doses: [] };
+        if (!this.entries[user][dateKey]) {
+            this.entries[user][dateKey] = {};
         }
 
-        if (!this.entries[dateKey][medicationId].doses) {
-            this.entries[dateKey][medicationId].doses = [];
+        if (!this.entries[user][dateKey][medicationId]) {
+            this.entries[user][dateKey][medicationId] = { doses: [] };
+        }
+
+        if (!this.entries[user][dateKey][medicationId].doses) {
+            this.entries[user][dateKey][medicationId].doses = [];
         }
 
         // Ensure doses array is large enough
-        while (this.entries[dateKey][medicationId].doses.length <= doseIndex) {
-            this.entries[dateKey][medicationId].doses.push(null);
+        while (this.entries[user][dateKey][medicationId].doses.length <= doseIndex) {
+            this.entries[user][dateKey][medicationId].doses.push(null);
         }
 
-        this.entries[dateKey][medicationId].doses[doseIndex] = {
+        this.entries[user][dateKey][medicationId].doses[doseIndex] = {
             taken: taken,
             timestamp: timestamp,
         };
 
         try {
-            await this.api.saveEntry(dateKey, medicationId, taken, timestamp, doseIndex);
+            // Use user-specific API client
+            const apiClient = new APIClient(API_BASE_URL);
+            apiClient.userId = userId;
+            await apiClient.saveEntry(dateKey, medicationId, taken, timestamp, doseIndex);
             this.renderTrackingInterface(dateKey);
             this.renderCalendar();
         } catch (error) {
             console.error('Failed to save entry:', error);
             // Revert on error
-            this.entries[dateKey][medicationId].doses[doseIndex] = null;
+            this.entries[user][dateKey][medicationId].doses[doseIndex] = null;
             alert('Failed to save entry. Please try again.');
         }
     }
 
     async updateTimestamp(dateKey, medicationId, doseIndex, timestamp) {
-        if (!this.entries[dateKey] || !this.entries[dateKey][medicationId] || 
-            !this.entries[dateKey][medicationId].doses || 
-            !this.entries[dateKey][medicationId].doses[doseIndex]) {
+        const user = this.currentUser;
+        const userId = getUserIdForUser(user);
+
+        if (!this.entries[user] || !this.entries[user][dateKey] || !this.entries[user][dateKey][medicationId] || 
+            !this.entries[user][dateKey][medicationId].doses || 
+            !this.entries[user][dateKey][medicationId].doses[doseIndex]) {
             alert('No entry found to update');
             return;
         }
 
-        this.entries[dateKey][medicationId].doses[doseIndex].timestamp = timestamp;
+        this.entries[user][dateKey][medicationId].doses[doseIndex].timestamp = timestamp;
 
         try {
-            await this.api.updateEntryTimestamp(dateKey, medicationId, timestamp, doseIndex);
+            const apiClient = new APIClient(API_BASE_URL);
+            apiClient.userId = userId;
+            await apiClient.updateEntryTimestamp(dateKey, medicationId, timestamp, doseIndex);
             this.renderTrackingInterface(dateKey);
             this.renderCalendar();
         } catch (error) {
@@ -661,27 +772,32 @@ class MedicationTracker {
             return;
         }
 
-        if (!this.entries[dateKey] || !this.entries[dateKey][medicationId] || 
-            !this.entries[dateKey][medicationId].doses || 
-            !this.entries[dateKey][medicationId].doses[doseIndex]) {
+        const user = this.currentUser;
+        const userId = getUserIdForUser(user);
+
+        if (!this.entries[user] || !this.entries[user][dateKey] || !this.entries[user][dateKey][medicationId] || 
+            !this.entries[user][dateKey][medicationId].doses || 
+            !this.entries[user][dateKey][medicationId].doses[doseIndex]) {
             return;
         }
 
         // Remove the dose entry
-        this.entries[dateKey][medicationId].doses[doseIndex] = null;
+        this.entries[user][dateKey][medicationId].doses[doseIndex] = null;
 
         // Clean up empty doses array if all doses are null
-        const hasAnyDoses = this.entries[dateKey][medicationId].doses.some(d => d !== null);
+        const hasAnyDoses = this.entries[user][dateKey][medicationId].doses.some(d => d !== null);
         if (!hasAnyDoses) {
-            delete this.entries[dateKey][medicationId];
+            delete this.entries[user][dateKey][medicationId];
             // If no medications left for this day, remove the day entry
-            if (Object.keys(this.entries[dateKey]).length === 0) {
-                delete this.entries[dateKey];
+            if (Object.keys(this.entries[user][dateKey]).length === 0) {
+                delete this.entries[user][dateKey];
             }
         }
 
         try {
-            await this.api.deleteEntry(dateKey, medicationId, doseIndex);
+            const apiClient = new APIClient(API_BASE_URL);
+            apiClient.userId = userId;
+            await apiClient.deleteEntry(dateKey, medicationId, doseIndex);
             this.renderTrackingInterface(dateKey);
             this.renderCalendar();
         } catch (error) {
@@ -772,66 +888,103 @@ class MedicationTracker {
         }
 
         const title = document.createElement('h3');
-        title.textContent = 'Medication Analytics';
+        title.textContent = this.selectedUsers.length > 1 ? 'Medication Analytics (Comparison)' : 'Medication Analytics';
         analyticsContainer.appendChild(title);
 
         this.medications.forEach(med => {
+            // Calculate stats for each selected user
+            const userStats = {};
+            this.selectedUsers.forEach(user => {
+                userStats[user] = { totalDoses: 0, takenDoses: 0, missedDoses: 0 };
+                
+                const userEntries = this.entries[user] || {};
+                Object.keys(userEntries).forEach(dateKey => {
+                    const dayEntries = userEntries[dateKey];
+                    const medEntry = dayEntries[med.id];
+                    if (medEntry && medEntry.doses) {
+                        medEntry.doses.forEach((dose) => {
+                            if (dose) {
+                                userStats[user].totalDoses++;
+                                if (dose.taken) {
+                                    userStats[user].takenDoses++;
+                                } else {
+                                    userStats[user].missedDoses++;
+                                }
+                            }
+                        });
+                    }
+                });
+            });
+
             const chart = document.createElement('div');
             chart.className = 'medication-chart';
 
-            // Calculate stats for this medication
-            let totalDoses = 0;
-            let takenDoses = 0;
-            let missedDoses = 0;
-            const dates = [];
+            if (this.selectedUsers.length > 1) {
+                // Comparison view
+                chart.innerHTML = `
+                    <div class="medication-chart-header">
+                        <h4>${med.name}</h4>
+                    </div>
+                    <div class="comparison-stats">
+                        ${this.selectedUsers.map(user => {
+                            const stats = userStats[user];
+                            const adherenceRate = stats.totalDoses > 0 ? Math.round((stats.takenDoses / stats.totalDoses) * 100) : 0;
+                            return `
+                                <div class="user-comparison">
+                                    <div class="user-name">${user}</div>
+                                    <div class="adherence-rate">${adherenceRate}%</div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" style="width: ${adherenceRate}%">${adherenceRate}%</div>
+                                    </div>
+                                    <div class="chart-details">
+                                        <div class="chart-detail-item">
+                                            <span class="chart-detail-label">Taken:</span>
+                                            <span class="chart-detail-value" style="color: #28a745;">${stats.takenDoses}</span>
+                                        </div>
+                                        <div class="chart-detail-item">
+                                            <span class="chart-detail-label">Missed:</span>
+                                            <span class="chart-detail-value" style="color: #dc3545;">${stats.missedDoses}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            } else {
+                // Single user view
+                const user = this.selectedUsers[0] || USERS[0];
+                const stats = userStats[user] || { totalDoses: 0, takenDoses: 0, missedDoses: 0 };
+                const adherenceRate = stats.totalDoses > 0 ? Math.round((stats.takenDoses / stats.totalDoses) * 100) : 0;
 
-            Object.keys(this.entries).forEach(dateKey => {
-                const dayEntries = this.entries[dateKey];
-                const medEntry = dayEntries[med.id];
-                if (medEntry && medEntry.doses) {
-                    medEntry.doses.forEach((dose, index) => {
-                        if (dose) {
-                            totalDoses++;
-                            if (dose.taken) {
-                                takenDoses++;
-                            } else {
-                                missedDoses++;
-                            }
-                            dates.push({ date: dateKey, doseIndex: index, ...dose });
-                        }
-                    });
-                }
-            });
-
-            const adherenceRate = totalDoses > 0 ? Math.round((takenDoses / totalDoses) * 100) : 0;
-
-            chart.innerHTML = `
-                <div class="medication-chart-header">
-                    <h4>${med.name}</h4>
-                    <div class="adherence-rate">${adherenceRate}%</div>
-                </div>
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: ${adherenceRate}%">${adherenceRate}%</div>
-                </div>
-                <div class="chart-details">
-                    <div class="chart-detail-item">
-                        <span class="chart-detail-label">Total Doses:</span>
-                        <span class="chart-detail-value">${totalDoses}</span>
+                chart.innerHTML = `
+                    <div class="medication-chart-header">
+                        <h4>${med.name}</h4>
+                        <div class="adherence-rate">${adherenceRate}%</div>
                     </div>
-                    <div class="chart-detail-item">
-                        <span class="chart-detail-label">Taken:</span>
-                        <span class="chart-detail-value" style="color: #28a745;">${takenDoses}</span>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${adherenceRate}%">${adherenceRate}%</div>
                     </div>
-                    <div class="chart-detail-item">
-                        <span class="chart-detail-label">Missed:</span>
-                        <span class="chart-detail-value" style="color: #dc3545;">${missedDoses}</span>
+                    <div class="chart-details">
+                        <div class="chart-detail-item">
+                            <span class="chart-detail-label">Total Doses:</span>
+                            <span class="chart-detail-value">${stats.totalDoses}</span>
+                        </div>
+                        <div class="chart-detail-item">
+                            <span class="chart-detail-label">Taken:</span>
+                            <span class="chart-detail-value" style="color: #28a745;">${stats.takenDoses}</span>
+                        </div>
+                        <div class="chart-detail-item">
+                            <span class="chart-detail-label">Missed:</span>
+                            <span class="chart-detail-value" style="color: #dc3545;">${stats.missedDoses}</span>
+                        </div>
+                        <div class="chart-detail-item">
+                            <span class="chart-detail-label">Frequency:</span>
+                            <span class="chart-detail-value">${med.timesPerDay || 1}x per day</span>
+                        </div>
                     </div>
-                    <div class="chart-detail-item">
-                        <span class="chart-detail-label">Frequency:</span>
-                        <span class="chart-detail-value">${med.timesPerDay || 1}x per day</span>
-                    </div>
-                </div>
-            `;
+                `;
+            }
 
             analyticsContainer.appendChild(chart);
         });
@@ -845,25 +998,29 @@ class MedicationTracker {
         title.textContent = 'Recent Entries';
         entriesContainer.appendChild(title);
 
-        // Collect all entries with dates
+        // Collect all entries with dates for selected users
         const allEntries = [];
-        Object.keys(this.entries).forEach(dateKey => {
-            const dayEntries = this.entries[dateKey];
-            Object.keys(dayEntries).forEach(medId => {
-                const medEntry = dayEntries[medId];
-                const medication = this.medications.find(m => m.id === medId);
-                if (medication && medEntry.doses) {
-                    medEntry.doses.forEach((dose, index) => {
-                        if (dose) {
-                            allEntries.push({
-                                date: dateKey,
-                                medication: medication.name,
-                                doseIndex: index,
-                                ...dose
-                            });
-                        }
-                    });
-                }
+        this.selectedUsers.forEach(user => {
+            const userEntries = this.entries[user] || {};
+            Object.keys(userEntries).forEach(dateKey => {
+                const dayEntries = userEntries[dateKey];
+                Object.keys(dayEntries).forEach(medId => {
+                    const medEntry = dayEntries[medId];
+                    const medication = this.medications.find(m => m.id === medId);
+                    if (medication && medEntry.doses) {
+                        medEntry.doses.forEach((dose, index) => {
+                            if (dose) {
+                                allEntries.push({
+                                    user: user,
+                                    date: dateKey,
+                                    medication: medication.name,
+                                    doseIndex: index,
+                                    ...dose
+                                });
+                            }
+                        });
+                    }
+                });
             });
         });
 
@@ -895,7 +1052,8 @@ class MedicationTracker {
             const name = document.createElement('div');
             name.className = 'entry-item-name';
             const doseText = entry.doseIndex > 0 ? ` (Dose ${entry.doseIndex + 1})` : '';
-            name.textContent = entry.medication + doseText;
+            const userText = this.selectedUsers.length > 1 ? ` [${entry.user}]` : '';
+            name.textContent = entry.medication + doseText + userText;
             info.appendChild(name);
 
             const date = document.createElement('div');
