@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medication Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>Medication Tracker</h1>
+            <button class="settings-btn" id="settingsBtn">⚙️ Settings</button>
+        </header>
+
+        <div class="calendar-container">
+            <div class="calendar-header">
+                <button class="nav-btn" id="prevMonth">&larr;</button>
+                <h2 class="month-year" id="monthYear"></h2>
+                <button class="nav-btn" id="nextMonth">&rarr;</button>
+            </div>
+            <div class="calendar-weekdays">
+                <div class="weekday">Sun</div>
+                <div class="weekday">Mon</div>
+                <div class="weekday">Tue</div>
+                <div class="weekday">Wed</div>
+                <div class="weekday">Thu</div>
+                <div class="weekday">Fri</div>
+                <div class="weekday">Sat</div>
+            </div>
+            <div class="calendar-days" id="calendarDays"></div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal" id="settingsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Medication Settings</h2>
+                <button class="close-btn" id="closeSettings">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="medication-list" id="medicationList"></div>
+                <div class="add-medication">
+                    <input type="text" id="newMedicationName" placeholder="Enter medication name">
+                    <button class="add-btn" id="addMedicationBtn">Add Medication</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Daily Tracking Modal -->
+    <div class="modal" id="trackingModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="trackingDate">Track Medications</h2>
+                <button class="close-btn" id="closeTracking">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="medication-tracking" id="medicationTracking"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+
