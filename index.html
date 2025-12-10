@@ -7,10 +7,42 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
+    <!-- Login Modal -->
+    <div class="modal active" id="loginModal">
+        <div class="modal-content login-modal-content">
+            <div class="modal-header">
+                <h2>Select Your Profile</h2>
+            </div>
+            <div class="modal-body">
+                <p style="text-align: center; margin-bottom: 30px; color: #666;">Choose your profile to access your medication tracker</p>
+                <div class="user-selection-login">
+                    <button class="user-login-btn" data-user="Seonho">
+                        <div class="user-avatar">S</div>
+                        <div class="user-name">Seonho</div>
+                    </button>
+                    <button class="user-login-btn" data-user="Peter">
+                        <div class="user-avatar">P</div>
+                        <div class="user-name">Peter</div>
+                    </button>
+                    <button class="user-login-btn" data-user="Angelina">
+                        <div class="user-avatar">A</div>
+                        <div class="user-name">Angelina</div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container" id="mainContainer" style="display: none;">
         <header class="header">
-            <h1>Medication Tracker</h1>
-            <button class="settings-btn" id="settingsBtn">⚙️ Settings</button>
+            <div>
+                <h1>Medication Tracker</h1>
+                <div id="currentUserDisplay" style="font-size: 14px; opacity: 0.9; margin-top: 5px;"></div>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <button class="settings-btn" id="settingsBtn">⚙️ Settings</button>
+                <button class="logout-btn" id="logoutBtn">Logout</button>
+            </div>
         </header>
 
         <div class="tabs">
@@ -89,6 +121,10 @@
                                 <label><input type="checkbox" value="5" class="day-checkbox"><span>Fri</span></label>
                                 <label><input type="checkbox" value="6" class="day-checkbox"><span>Sat</span></label>
                             </div>
+                        </div>
+                        <div class="frequency-row">
+                            <label>Color:</label>
+                            <input type="color" id="medicationColor" value="#ffc107">
                         </div>
                     </div>
                     <button class="add-btn" id="addMedicationBtn">Add Medication</button>

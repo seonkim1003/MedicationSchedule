@@ -3,16 +3,31 @@
 // For production, use your deployed Worker URL
 const API_BASE_URL = 'https://medication-tracker-api.seonkim1003.workers.dev';
 
-// Use shared user ID for all users
+// Available users
+const USERS = ['Seonho', 'Peter', 'Angelina'];
+
+// Get user ID from localStorage
 function getUserId() {
-    // All users share the same data
-    return 'shared';
+    const currentUser = localStorage.getItem('currentUser');
+    if (currentUser && USERS.includes(currentUser)) {
+        return currentUser.toLowerCase();
+    }
+    return null; // No user logged in
+}
+
+// Get current user name
+function getCurrentUser() {
+    return localStorage.getItem('currentUser');
 }
 
 // API Client
 class APIClient {
     constructor(baseURL) {
         this.baseURL = baseURL;
+        this.updateUserId();
+    }
+
+    updateUserId() {
         this.userId = getUserId();
     }
 
@@ -92,13 +107,93 @@ class MedicationTracker {
         this.medications = [];
         this.entries = {};
         this.selectedDate = null;
+        this.checkLogin();
+    }
+
+    checkLogin() {
+        const currentUser = getCurrentUser();
+        if (!currentUser) {
+            // Show login modal
+            document.getElementById('loginModal').classList.add('active');
+            document.getElementById('mainContainer').style.display = 'none';
+            this.attachLoginListeners();
+        } else {
+            // User is logged in, initialize app
+            this.init();
+        }
+    }
+
+    attachLoginListeners() {
+        const loginButtons = document.querySelectorAll('.user-login-btn');
+        loginButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const user = btn.getAttribute('data-user');
+                this.login(user);
+            });
+        });
+
+        // Prevent login modal from closing on outside click
+        const loginModal = document.getElementById('loginModal');
+        if (loginModal) {
+            loginModal.addEventListener('click', (e) => {
+                // Only prevent if clicking the modal background, not the content
+                if (e.target.id === 'loginModal') {
+                    e.stopPropagation();
+                }
+            });
+        }
+    }
+
+    login(user) {
+        if (!USERS.includes(user)) {
+            alert('Invalid user selected');
+            return;
+        }
+        
+        localStorage.setItem('currentUser', user);
+        this.api.updateUserId();
+        
+        // Hide login modal, show main container
+        document.getElementById('loginModal').classList.remove('active');
+        document.getElementById('mainContainer').style.display = 'block';
+        
+        // Update user display
+        this.updateUserDisplay();
+        
+        // Initialize app
         this.init();
     }
 
+    logout() {
+        if (confirm('Are you sure you want to logout?')) {
+            localStorage.removeItem('currentUser');
+            this.api.updateUserId();
+            
+            // Hide main container, show login modal
+            document.getElementById('mainContainer').style.display = 'none';
+            document.getElementById('loginModal').classList.add('active');
+            
+            // Clear data
+            this.medications = [];
+            this.entries = {};
+        }
+    }
+
+    updateUserDisplay() {
+        const currentUser = getCurrentUser();
+        const userDisplay = document.getElementById('currentUserDisplay');
+        if (userDisplay && currentUser) {
+            userDisplay.textContent = `Logged in as: ${currentUser}`;
+        }
+    }
+
     async init() {
+        // Ensure API client has the correct user ID
+        this.api.updateUserId();
         await this.loadData();
         this.renderCalendar();
         this.attachEventListeners();
+        this.updateUserDisplay();
     }
 
     async loadData() {
@@ -182,6 +277,14 @@ class MedicationTracker {
                 this.closeTrackingModal();
             }
         });
+
+        // Logout button
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', () => {
+                this.logout();
+            });
+        }
     }
 
     getMonthYearString() {
@@ -252,13 +355,20 @@ class MedicationTracker {
             
             const timesPerDay = med.timesPerDay || 1;
             const medEntries = dayEntries[med.id];
+            const medColor = med.color || '#ffc107'; // Default to yellow if no color set
             
             for (let i = 0; i < timesPerDay; i++) {
                 if (medEntries && medEntries.doses && medEntries.doses[i]) {
                     const dose = medEntries.doses[i];
-                    statuses.push(dose.taken ? 'taken' : 'missed');
+                    statuses.push({
+                        status: dose.taken ? 'taken' : 'missed',
+                        color: null
+                    });
                 } else {
-                    statuses.push('pending');
+                    statuses.push({
+                        status: 'pending',
+                        color: medColor
+                    });
                 }
             }
         });
@@ -305,9 +415,15 @@ class MedicationTracker {
             const statusBoxes = document.createElement('div');
             statusBoxes.className = 'medication-status-boxes';
 
-            statuses.forEach(status => {
+            statuses.forEach(statusInfo => {
                 const box = document.createElement('div');
+                const status = typeof statusInfo === 'string' ? statusInfo : statusInfo.status;
                 box.className = `status-box ${status}`;
+                // If it's a pending status with a custom color, apply it
+                if (status === 'pending' && statusInfo.color) {
+                    box.style.background = statusInfo.color;
+                    box.style.borderColor = statusInfo.color;
+                }
                 statusBoxes.appendChild(box);
             });
 
@@ -357,7 +473,27 @@ class MedicationTracker {
             
             const name = document.createElement('div');
             name.className = 'medication-item-name';
-            name.textContent = med.name;
+            name.style.display = 'flex';
+            name.style.alignItems = 'center';
+            name.style.gap = '10px';
+            
+            // Color indicator
+            const colorIndicator = document.createElement('div');
+            colorIndicator.style.width = '20px';
+            colorIndicator.style.height = '20px';
+            colorIndicator.style.borderRadius = '4px';
+            colorIndicator.style.border = '1px solid rgba(0, 0, 0, 0.1)';
+            colorIndicator.style.backgroundColor = med.color || '#ffc107';
+            colorIndicator.style.cursor = 'pointer';
+            colorIndicator.title = 'Click to change color';
+            colorIndicator.addEventListener('click', () => {
+                this.editMedicationColor(med);
+            });
+            name.appendChild(colorIndicator);
+            
+            const nameText = document.createElement('span');
+            nameText.textContent = med.name;
+            name.appendChild(nameText);
             info.appendChild(name);
 
             const details = document.createElement('div');
@@ -404,12 +540,14 @@ class MedicationTracker {
 
         const timesPerDay = parseInt(document.getElementById('timesPerDay').value) || 1;
         const frequencyType = document.getElementById('frequencyType').value;
+        const medicationColor = document.getElementById('medicationColor').value;
         
         const newMed = {
             id: Date.now().toString(),
             name: name,
             timesPerDay: timesPerDay,
             frequency: frequencyType,
+            color: medicationColor,
         };
 
         if (frequencyType === 'weekly') {
@@ -426,6 +564,7 @@ class MedicationTracker {
         input.value = '';
         document.getElementById('timesPerDay').value = '1';
         document.getElementById('frequencyType').value = 'daily';
+        document.getElementById('medicationColor').value = '#ffc107';
         document.getElementById('weeklyDaysRow').style.display = 'none';
         document.querySelectorAll('.day-checkbox').forEach(cb => cb.checked = false);
 
@@ -458,6 +597,58 @@ class MedicationTracker {
             console.error('Failed to delete medication:', error);
             alert('Failed to delete medication. Please try again.');
         }
+    }
+
+    async editMedicationColor(med) {
+        // Create a modal-like color picker
+        const colorPicker = document.createElement('input');
+        colorPicker.type = 'color';
+        colorPicker.value = med.color || '#ffc107';
+        colorPicker.style.position = 'fixed';
+        colorPicker.style.left = '50%';
+        colorPicker.style.top = '50%';
+        colorPicker.style.transform = 'translate(-50%, -50%)';
+        colorPicker.style.width = '200px';
+        colorPicker.style.height = '200px';
+        colorPicker.style.zIndex = '10000';
+        colorPicker.style.border = 'none';
+        colorPicker.style.borderRadius = '10px';
+        colorPicker.style.cursor = 'pointer';
+        
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '100%';
+        overlay.style.height = '100%';
+        overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+        overlay.style.zIndex = '9999';
+        overlay.style.cursor = 'pointer';
+        
+        const handleColorChange = () => {
+            med.color = colorPicker.value;
+            document.body.removeChild(colorPicker);
+            document.body.removeChild(overlay);
+            
+            // Save and update
+            this.api.saveMedications(this.medications).then(() => {
+                this.renderMedicationList();
+                this.renderCalendar();
+            }).catch(error => {
+                console.error('Failed to update medication color:', error);
+                alert('Failed to update medication color. Please try again.');
+            });
+        };
+        
+        colorPicker.addEventListener('change', handleColorChange);
+        overlay.addEventListener('click', () => {
+            document.body.removeChild(colorPicker);
+            document.body.removeChild(overlay);
+        });
+        
+        document.body.appendChild(overlay);
+        document.body.appendChild(colorPicker);
+        colorPicker.click();
     }
 
     openTrackingModal(date) {

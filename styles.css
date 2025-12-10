@@ -254,6 +254,76 @@ body {
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
 }
 
+.login-modal-content {
+    max-width: 500px;
+    text-align: center;
+}
+
+.user-selection-login {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.user-login-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    border-radius: 15px;
+    padding: 25px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+}
+
+.user-login-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+}
+
+.user-login-btn:active {
+    transform: translateY(-1px);
+}
+
+.user-avatar {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    font-weight: 700;
+    border: 3px solid rgba(255, 255, 255, 0.5);
+}
+
+.user-name {
+    font-size: 24px;
+    font-weight: 600;
+    flex: 1;
+    text-align: left;
+}
+
+.logout-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s ease;
+}
+
+.logout-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-2px);
+}
+
 .modal-header {
     display: flex;
     justify-content: space-between;
@@ -419,6 +489,25 @@ body {
 }
 
 #newMedicationName:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+#medicationColor {
+    width: 100px;
+    height: 40px;
+    border: 2px solid #e9ecef;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    background: white;
+}
+
+#medicationColor:hover {
+    border-color: #667eea;
+}
+
+#medicationColor:focus {
     outline: none;
     border-color: #667eea;
 }
