@@ -75,6 +75,13 @@ class APIClient {
             method: 'DELETE',
         });
     }
+
+    async deleteEntry(date, medicationId, doseIndex) {
+        return this.request('/api/entry', {
+            method: 'DELETE',
+            body: JSON.stringify({ date, medicationId, doseIndex }),
+        });
+    }
 }
 
 // Calendar Application
@@ -575,6 +582,17 @@ class MedicationTracker {
                 editTimestamp.appendChild(updateBtn);
 
                 item.appendChild(editTimestamp);
+
+                // Clear/Delete status button
+                if (doseTaken !== null) {
+                    const clearBtn = document.createElement('button');
+                    clearBtn.className = 'clear-status-btn';
+                    clearBtn.textContent = 'Clear Status';
+                    clearBtn.addEventListener('click', () => {
+                        this.clearMedicationStatus(dateKey, med.id, i);
+                    });
+                    item.appendChild(clearBtn);
+                }
             }
 
             container.appendChild(item);
@@ -635,6 +653,40 @@ class MedicationTracker {
         } catch (error) {
             console.error('Failed to update timestamp:', error);
             alert('Failed to update timestamp. Please try again.');
+        }
+    }
+
+    async clearMedicationStatus(dateKey, medicationId, doseIndex) {
+        if (!confirm('Are you sure you want to clear this status?')) {
+            return;
+        }
+
+        if (!this.entries[dateKey] || !this.entries[dateKey][medicationId] || 
+            !this.entries[dateKey][medicationId].doses || 
+            !this.entries[dateKey][medicationId].doses[doseIndex]) {
+            return;
+        }
+
+        // Remove the dose entry
+        this.entries[dateKey][medicationId].doses[doseIndex] = null;
+
+        // Clean up empty doses array if all doses are null
+        const hasAnyDoses = this.entries[dateKey][medicationId].doses.some(d => d !== null);
+        if (!hasAnyDoses) {
+            delete this.entries[dateKey][medicationId];
+            // If no medications left for this day, remove the day entry
+            if (Object.keys(this.entries[dateKey]).length === 0) {
+                delete this.entries[dateKey];
+            }
+        }
+
+        try {
+            await this.api.deleteEntry(dateKey, medicationId, doseIndex);
+            this.renderTrackingInterface(dateKey);
+            this.renderCalendar();
+        } catch (error) {
+            console.error('Failed to clear status:', error);
+            alert('Failed to clear status. Please try again.');
         }
     }
 

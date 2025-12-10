@@ -541,6 +541,24 @@ body {
     background: #5568d3;
 }
 
+.clear-status-btn {
+    background: #6c757d;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    margin-top: 10px;
+    transition: all 0.2s;
+    width: 100%;
+}
+
+.clear-status-btn:hover {
+    background: #5a6268;
+    transform: translateY(-1px);
+}
+
 /* Data View Styles */
 .data-container {
     background: white;
