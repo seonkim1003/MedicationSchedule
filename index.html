@@ -7,41 +7,21 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <!-- Login Modal -->
-    <div class="modal active" id="loginModal">
-        <div class="modal-content login-modal-content">
-            <div class="modal-header">
-                <h2>Select Your Profile</h2>
-            </div>
-            <div class="modal-body">
-                <p style="text-align: center; margin-bottom: 30px; color: #666;">Choose your profile to access your medication tracker</p>
-                <div class="user-selection-login">
-                    <button class="user-login-btn" data-user="Seonho">
-                        <div class="user-avatar">S</div>
-                        <div class="user-name">Seonho</div>
-                    </button>
-                    <button class="user-login-btn" data-user="Peter">
-                        <div class="user-avatar">P</div>
-                        <div class="user-name">Peter</div>
-                    </button>
-                    <button class="user-login-btn" data-user="Angelina">
-                        <div class="user-avatar">A</div>
-                        <div class="user-name">Angelina</div>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="container" id="mainContainer" style="display: none;">
+    <div class="container">
         <header class="header">
             <div>
                 <h1>Medication Tracker</h1>
-                <div id="currentUserDisplay" style="font-size: 14px; opacity: 0.9; margin-top: 5px;"></div>
             </div>
             <div style="display: flex; gap: 10px; align-items: center;">
+                <div class="profile-selector">
+                    <label for="profileSelect" style="margin-right: 10px; font-size: 14px; opacity: 0.9;">Profile:</label>
+                    <select id="profileSelect" class="profile-select">
+                        <option value="seonho">Seonho</option>
+                        <option value="peter">Peter</option>
+                        <option value="angelina">Angelina</option>
+                    </select>
+                </div>
                 <button class="settings-btn" id="settingsBtn">⚙️ Settings</button>
-                <button class="logout-btn" id="logoutBtn">Logout</button>
             </div>
         </header>
 

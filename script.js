@@ -6,18 +6,22 @@ const API_BASE_URL = 'https://medication-tracker-api.seonkim1003.workers.dev';
 // Available users
 const USERS = ['Seonho', 'Peter', 'Angelina'];
 
-// Get user ID from localStorage
+// Get user ID from localStorage or default to first user
 function getUserId() {
     const currentUser = localStorage.getItem('currentUser');
     if (currentUser && USERS.includes(currentUser)) {
         return currentUser.toLowerCase();
     }
-    return null; // No user logged in
+    // Default to first user if none selected
+    const defaultUser = USERS[0];
+    localStorage.setItem('currentUser', defaultUser);
+    return defaultUser.toLowerCase();
 }
 
 // Get current user name
 function getCurrentUser() {
-    return localStorage.getItem('currentUser');
+    const currentUser = localStorage.getItem('currentUser');
+    return currentUser || USERS[0]; // Default to first user
 }
 
 // API Client
@@ -107,84 +111,26 @@ class MedicationTracker {
         this.medications = [];
         this.entries = {};
         this.selectedDate = null;
-        this.checkLogin();
+        this.init();
     }
 
-    checkLogin() {
-        const currentUser = getCurrentUser();
-        if (!currentUser) {
-            // Show login modal
-            document.getElementById('loginModal').classList.add('active');
-            document.getElementById('mainContainer').style.display = 'none';
-            this.attachLoginListeners();
-        } else {
-            // User is logged in, initialize app
-            this.init();
-        }
-    }
-
-    attachLoginListeners() {
-        const loginButtons = document.querySelectorAll('.user-login-btn');
-        loginButtons.forEach(btn => {
-            btn.addEventListener('click', () => {
-                const user = btn.getAttribute('data-user');
-                this.login(user);
-            });
-        });
-
-        // Prevent login modal from closing on outside click
-        const loginModal = document.getElementById('loginModal');
-        if (loginModal) {
-            loginModal.addEventListener('click', (e) => {
-                // Only prevent if clicking the modal background, not the content
-                if (e.target.id === 'loginModal') {
-                    e.stopPropagation();
-                }
-            });
-        }
-    }
-
-    login(user) {
+    switchProfile(user) {
         if (!USERS.includes(user)) {
-            alert('Invalid user selected');
+            console.error('Invalid user selected');
             return;
         }
         
         localStorage.setItem('currentUser', user);
         this.api.updateUserId();
         
-        // Hide login modal, show main container
-        document.getElementById('loginModal').classList.remove('active');
-        document.getElementById('mainContainer').style.display = 'block';
-        
-        // Update user display
-        this.updateUserDisplay();
-        
-        // Initialize app
-        this.init();
-    }
-
-    logout() {
-        if (confirm('Are you sure you want to logout?')) {
-            localStorage.removeItem('currentUser');
-            this.api.updateUserId();
-            
-            // Hide main container, show login modal
-            document.getElementById('mainContainer').style.display = 'none';
-            document.getElementById('loginModal').classList.add('active');
-            
-            // Clear data
-            this.medications = [];
-            this.entries = {};
-        }
-    }
-
-    updateUserDisplay() {
-        const currentUser = getCurrentUser();
-        const userDisplay = document.getElementById('currentUserDisplay');
-        if (userDisplay && currentUser) {
-            userDisplay.textContent = `Logged in as: ${currentUser}`;
-        }
+        // Reload data for the new profile
+        this.loadData().then(() => {
+            this.renderCalendar();
+            // If on data tab, refresh it too
+            if (document.getElementById('dataTab').classList.contains('active')) {
+                this.renderDataView();
+            }
+        });
     }
 
     async init() {
@@ -193,7 +139,31 @@ class MedicationTracker {
         await this.loadData();
         this.renderCalendar();
         this.attachEventListeners();
-        this.updateUserDisplay();
+        this.setupProfileSelector();
+    }
+
+    setupProfileSelector() {
+        const profileSelect = document.getElementById('profileSelect');
+        if (!profileSelect) return;
+
+        // Set current selection
+        const currentUser = getCurrentUser().toLowerCase();
+        profileSelect.value = currentUser;
+
+        // Listen for profile changes
+        profileSelect.addEventListener('change', (e) => {
+            const selectedProfile = e.target.value;
+            // Convert back to capitalized name
+            const userMap = {
+                'seonho': 'Seonho',
+                'peter': 'Peter',
+                'angelina': 'Angelina'
+            };
+            const user = userMap[selectedProfile];
+            if (user) {
+                this.switchProfile(user);
+            }
+        });
     }
 
     async loadData() {
@@ -277,14 +247,6 @@ class MedicationTracker {
                 this.closeTrackingModal();
             }
         });
-
-        // Logout button
-        const logoutBtn = document.getElementById('logoutBtn');
-        if (logoutBtn) {
-            logoutBtn.addEventListener('click', () => {
-                this.logout();
-            });
-        }
     }
 
     getMonthYearString() {
