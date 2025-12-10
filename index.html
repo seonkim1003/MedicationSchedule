@@ -13,6 +13,12 @@
             <button class="settings-btn" id="settingsBtn">⚙️ Settings</button>
         </header>
 
+        <div class="tabs">
+            <button class="tab-btn active" id="calendarTab">📅 Calendar</button>
+            <button class="tab-btn" id="dataTab">📊 Data</button>
+        </div>
+
+        <div class="tab-content active" id="calendarContent">
         <div class="calendar-container">
             <div class="calendar-header">
                 <button class="nav-btn" id="prevMonth">&larr;</button>
@@ -30,6 +36,17 @@
             </div>
             <div class="calendar-days" id="calendarDays"></div>
         </div>
+        </div>
+        </div>
+
+        <div class="tab-content" id="dataContent">
+            <div class="data-container">
+                <h2>Medication Tracking Data</h2>
+                <div class="data-stats" id="dataStats"></div>
+                <div class="medication-analytics" id="medicationAnalytics"></div>
+                <div class="recent-entries" id="recentEntries"></div>
+            </div>
+        </div>
     </div>
 
     <!-- Settings Modal -->
@@ -43,6 +60,37 @@
                 <div class="medication-list" id="medicationList"></div>
                 <div class="add-medication">
                     <input type="text" id="newMedicationName" placeholder="Enter medication name">
+                    <div class="frequency-settings">
+                        <div class="frequency-row">
+                            <label>Times per day:</label>
+                            <select id="timesPerDay">
+                                <option value="1">1x</option>
+                                <option value="2">2x</option>
+                                <option value="3">3x</option>
+                                <option value="4">4x</option>
+                            </select>
+                        </div>
+                        <div class="frequency-row">
+                            <label>Frequency:</label>
+                            <select id="frequencyType">
+                                <option value="daily">Daily</option>
+                                <option value="every-other-day">Every Other Day</option>
+                                <option value="weekly">Weekly</option>
+                            </select>
+                        </div>
+                        <div class="frequency-row" id="weeklyDaysRow" style="display: none;">
+                            <label>Days of week:</label>
+                            <div class="day-checkboxes">
+                                <label><input type="checkbox" value="0" class="day-checkbox"><span>Sun</span></label>
+                                <label><input type="checkbox" value="1" class="day-checkbox"><span>Mon</span></label>
+                                <label><input type="checkbox" value="2" class="day-checkbox"><span>Tue</span></label>
+                                <label><input type="checkbox" value="3" class="day-checkbox"><span>Wed</span></label>
+                                <label><input type="checkbox" value="4" class="day-checkbox"><span>Thu</span></label>
+                                <label><input type="checkbox" value="5" class="day-checkbox"><span>Fri</span></label>
+                                <label><input type="checkbox" value="6" class="day-checkbox"><span>Sat</span></label>
+                            </div>
+                        </div>
+                    </div>
                     <button class="add-btn" id="addMedicationBtn">Add Medication</button>
                 </div>
             </div>

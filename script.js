@@ -60,17 +60,17 @@ class APIClient {
         });
     }
 
-    async saveEntry(date, medicationId, taken, timestamp) {
+    async saveEntry(date, medicationId, taken, timestamp, doseIndex = 0) {
         return this.request('/api/entry', {
             method: 'POST',
-            body: JSON.stringify({ date, medicationId, taken, timestamp }),
+            body: JSON.stringify({ date, medicationId, taken, timestamp, doseIndex }),
         });
     }
 
-    async updateEntryTimestamp(date, medicationId, timestamp) {
+    async updateEntryTimestamp(date, medicationId, timestamp, doseIndex = 0) {
         return this.request('/api/entry', {
             method: 'PUT',
-            body: JSON.stringify({ date, medicationId, timestamp }),
+            body: JSON.stringify({ date, medicationId, timestamp, doseIndex }),
         });
     }
 
@@ -148,6 +148,25 @@ class MedicationTracker {
             }
         });
 
+        // Frequency type change
+        document.getElementById('frequencyType').addEventListener('change', (e) => {
+            const weeklyRow = document.getElementById('weeklyDaysRow');
+            if (e.target.value === 'weekly') {
+                weeklyRow.style.display = 'block';
+            } else {
+                weeklyRow.style.display = 'none';
+            }
+        });
+
+        // Tab switching
+        document.getElementById('calendarTab').addEventListener('click', () => {
+            this.switchTab('calendar');
+        });
+
+        document.getElementById('dataTab').addEventListener('click', () => {
+            this.switchTab('data');
+        });
+
         // Close modals on outside click
         document.getElementById('settingsModal').addEventListener('click', (e) => {
             if (e.target.id === 'settingsModal') {
@@ -198,13 +217,50 @@ class MedicationTracker {
         return `${year}-${month}-${day}`;
     }
 
+    shouldTrackMedication(med, date) {
+        if (!med.frequency) return true; // Default to daily if no frequency set
+        
+        const frequency = med.frequency || 'daily';
+        const dayOfWeek = date.getDay();
+        
+        switch (frequency) {
+            case 'daily':
+                return true;
+            case 'every-other-day':
+                // Track on even days of month (2nd, 4th, 6th, etc.)
+                return date.getDate() % 2 === 0;
+            case 'weekly':
+                const daysOfWeek = med.daysOfWeek || [];
+                return daysOfWeek.includes(dayOfWeek.toString());
+            default:
+                return true;
+        }
+    }
+
     getMedicationStatus(dateKey) {
         const dayEntries = this.entries[dateKey] || {};
-        return this.medications.map(med => {
-            const entry = dayEntries[med.id];
-            if (!entry) return 'pending';
-            return entry.taken ? 'taken' : 'missed';
+        const date = new Date(dateKey + 'T00:00:00');
+        const statuses = [];
+        
+        this.medications.forEach(med => {
+            if (!this.shouldTrackMedication(med, date)) {
+                return; // Skip medications not scheduled for this day
+            }
+            
+            const timesPerDay = med.timesPerDay || 1;
+            const medEntries = dayEntries[med.id];
+            
+            for (let i = 0; i < timesPerDay; i++) {
+                if (medEntries && medEntries.doses && medEntries.doses[i]) {
+                    const dose = medEntries.doses[i];
+                    statuses.push(dose.taken ? 'taken' : 'missed');
+                } else {
+                    statuses.push('pending');
+                }
+            }
         });
+        
+        return statuses;
     }
 
     renderCalendar() {
@@ -293,10 +349,34 @@ class MedicationTracker {
             const item = document.createElement('div');
             item.className = 'medication-item';
 
+            const info = document.createElement('div');
+            info.style.flex = '1';
+            
             const name = document.createElement('div');
             name.className = 'medication-item-name';
             name.textContent = med.name;
-            item.appendChild(name);
+            info.appendChild(name);
+
+            const details = document.createElement('div');
+            details.style.fontSize = '12px';
+            details.style.color = '#666';
+            details.style.marginTop = '4px';
+            const timesPerDay = med.timesPerDay || 1;
+            const frequency = med.frequency || 'daily';
+            let freqText = '';
+            if (frequency === 'daily') {
+                freqText = 'Daily';
+            } else if (frequency === 'every-other-day') {
+                freqText = 'Every Other Day';
+            } else if (frequency === 'weekly') {
+                const days = med.daysOfWeek || [];
+                const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                freqText = 'Weekly: ' + days.map(d => dayNames[parseInt(d)]).join(', ');
+            }
+            details.textContent = `${timesPerDay}x per day • ${freqText}`;
+            info.appendChild(details);
+            
+            item.appendChild(info);
 
             const deleteBtn = document.createElement('button');
             deleteBtn.className = 'delete-med-btn';
@@ -319,13 +399,32 @@ class MedicationTracker {
             return;
         }
 
+        const timesPerDay = parseInt(document.getElementById('timesPerDay').value) || 1;
+        const frequencyType = document.getElementById('frequencyType').value;
+        
         const newMed = {
             id: Date.now().toString(),
             name: name,
+            timesPerDay: timesPerDay,
+            frequency: frequencyType,
         };
+
+        if (frequencyType === 'weekly') {
+            const checkboxes = document.querySelectorAll('.day-checkbox:checked');
+            const daysOfWeek = Array.from(checkboxes).map(cb => cb.value);
+            if (daysOfWeek.length === 0) {
+                alert('Please select at least one day of the week');
+                return;
+            }
+            newMed.daysOfWeek = daysOfWeek;
+        }
 
         this.medications.push(newMed);
         input.value = '';
+        document.getElementById('timesPerDay').value = '1';
+        document.getElementById('frequencyType').value = 'daily';
+        document.getElementById('weeklyDaysRow').style.display = 'none';
+        document.querySelectorAll('.day-checkbox').forEach(cb => cb.checked = false);
 
         try {
             await this.api.saveMedications(this.medications);
@@ -388,116 +487,386 @@ class MedicationTracker {
         }
 
         const dayEntries = this.entries[dateKey] || {};
+        const date = new Date(dateKey + 'T00:00:00');
 
         this.medications.forEach(med => {
-            const entry = dayEntries[med.id];
-            const taken = entry ? entry.taken : null;
-            const timestamp = entry ? entry.timestamp : null;
+            // Check if medication should be tracked on this day
+            if (!this.shouldTrackMedication(med, date)) {
+                return; // Skip medications not scheduled for this day
+            }
+
+            const timesPerDay = med.timesPerDay || 1;
+            const medEntries = dayEntries[med.id] || {};
+            const doses = medEntries.doses || [];
 
             const item = document.createElement('div');
             item.className = 'medication-tracking-item';
 
             const title = document.createElement('h3');
             title.textContent = med.name;
+            if (timesPerDay > 1) {
+                title.textContent += ` (${timesPerDay}x per day)`;
+            }
             item.appendChild(title);
 
-            const buttons = document.createElement('div');
-            buttons.className = 'tracking-buttons';
+            // Create tracking for each dose
+            for (let i = 0; i < timesPerDay; i++) {
+                const dose = doses[i];
+                const doseTaken = dose ? dose.taken : null;
+                const doseTimestamp = dose ? dose.timestamp : null;
 
-            const yesBtn = document.createElement('button');
-            yesBtn.className = `track-btn yes ${taken === true ? 'active' : ''}`;
-            yesBtn.textContent = '✓ Yes';
-            yesBtn.addEventListener('click', () => {
-                this.trackMedication(dateKey, med.id, true);
-            });
-            buttons.appendChild(yesBtn);
+                if (timesPerDay > 1) {
+                    const doseLabel = document.createElement('div');
+                    doseLabel.style.fontSize = '14px';
+                    doseLabel.style.fontWeight = '600';
+                    doseLabel.style.marginTop = i > 0 ? '20px' : '0';
+                    doseLabel.style.marginBottom = '10px';
+                    doseLabel.style.color = '#667eea';
+                    doseLabel.textContent = `Dose ${i + 1}:`;
+                    item.appendChild(doseLabel);
+                }
 
-            const noBtn = document.createElement('button');
-            noBtn.className = `track-btn no ${taken === false ? 'active' : ''}`;
-            noBtn.textContent = '✗ No';
-            noBtn.addEventListener('click', () => {
-                this.trackMedication(dateKey, med.id, false);
-            });
-            buttons.appendChild(noBtn);
+                const buttons = document.createElement('div');
+                buttons.className = 'tracking-buttons';
 
-            item.appendChild(buttons);
+                const yesBtn = document.createElement('button');
+                yesBtn.className = `track-btn yes ${doseTaken === true ? 'active' : ''}`;
+                yesBtn.textContent = '✓ Yes';
+                yesBtn.addEventListener('click', () => {
+                    this.trackMedicationDose(dateKey, med.id, i, true);
+                });
+                buttons.appendChild(yesBtn);
 
-            if (timestamp) {
-                const timestampDisplay = document.createElement('div');
-                timestampDisplay.className = 'timestamp-display';
-                const date = new Date(timestamp);
-                timestampDisplay.innerHTML = `<strong>Recorded:</strong> ${date.toLocaleString()}`;
-                item.appendChild(timestampDisplay);
+                const noBtn = document.createElement('button');
+                noBtn.className = `track-btn no ${doseTaken === false ? 'active' : ''}`;
+                noBtn.textContent = '✗ No';
+                noBtn.addEventListener('click', () => {
+                    this.trackMedicationDose(dateKey, med.id, i, false);
+                });
+                buttons.appendChild(noBtn);
+
+                item.appendChild(buttons);
+
+                if (doseTimestamp) {
+                    const timestampDisplay = document.createElement('div');
+                    timestampDisplay.className = 'timestamp-display';
+                    const date = new Date(doseTimestamp);
+                    timestampDisplay.innerHTML = `<strong>Recorded:</strong> ${date.toLocaleString()}`;
+                    item.appendChild(timestampDisplay);
+                }
+
+                // Edit timestamp option
+                const editTimestamp = document.createElement('div');
+                editTimestamp.className = 'edit-timestamp';
+
+                const timeInput = document.createElement('input');
+                timeInput.type = 'datetime-local';
+                if (doseTimestamp) {
+                    const date = new Date(doseTimestamp);
+                    const localDateTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+                        .toISOString()
+                        .slice(0, 16);
+                    timeInput.value = localDateTime;
+                }
+                editTimestamp.appendChild(timeInput);
+
+                const updateBtn = document.createElement('button');
+                updateBtn.textContent = 'Update Timestamp';
+                updateBtn.addEventListener('click', () => {
+                    const newTimestamp = new Date(timeInput.value).toISOString();
+                    this.updateTimestamp(dateKey, med.id, i, newTimestamp);
+                });
+                editTimestamp.appendChild(updateBtn);
+
+                item.appendChild(editTimestamp);
             }
 
-            // Edit timestamp option
-            const editTimestamp = document.createElement('div');
-            editTimestamp.className = 'edit-timestamp';
-
-            const timeInput = document.createElement('input');
-            timeInput.type = 'datetime-local';
-            if (timestamp) {
-                const date = new Date(timestamp);
-                const localDateTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-                    .toISOString()
-                    .slice(0, 16);
-                timeInput.value = localDateTime;
-            }
-            editTimestamp.appendChild(timeInput);
-
-            const updateBtn = document.createElement('button');
-            updateBtn.textContent = 'Update Timestamp';
-            updateBtn.addEventListener('click', () => {
-                const newTimestamp = new Date(timeInput.value).toISOString();
-                this.updateTimestamp(dateKey, med.id, newTimestamp);
-            });
-            editTimestamp.appendChild(updateBtn);
-
-            item.appendChild(editTimestamp);
             container.appendChild(item);
         });
     }
 
-    async trackMedication(dateKey, medicationId, taken) {
+    async trackMedicationDose(dateKey, medicationId, doseIndex, taken) {
         const timestamp = new Date().toISOString();
 
         if (!this.entries[dateKey]) {
             this.entries[dateKey] = {};
         }
 
-        this.entries[dateKey][medicationId] = {
+        if (!this.entries[dateKey][medicationId]) {
+            this.entries[dateKey][medicationId] = { doses: [] };
+        }
+
+        if (!this.entries[dateKey][medicationId].doses) {
+            this.entries[dateKey][medicationId].doses = [];
+        }
+
+        // Ensure doses array is large enough
+        while (this.entries[dateKey][medicationId].doses.length <= doseIndex) {
+            this.entries[dateKey][medicationId].doses.push(null);
+        }
+
+        this.entries[dateKey][medicationId].doses[doseIndex] = {
             taken: taken,
             timestamp: timestamp,
         };
 
         try {
-            await this.api.saveEntry(dateKey, medicationId, taken, timestamp);
+            await this.api.saveEntry(dateKey, medicationId, taken, timestamp, doseIndex);
             this.renderTrackingInterface(dateKey);
             this.renderCalendar();
         } catch (error) {
             console.error('Failed to save entry:', error);
             // Revert on error
-            delete this.entries[dateKey][medicationId];
+            this.entries[dateKey][medicationId].doses[doseIndex] = null;
             alert('Failed to save entry. Please try again.');
         }
     }
 
-    async updateTimestamp(dateKey, medicationId, timestamp) {
-        if (!this.entries[dateKey] || !this.entries[dateKey][medicationId]) {
+    async updateTimestamp(dateKey, medicationId, doseIndex, timestamp) {
+        if (!this.entries[dateKey] || !this.entries[dateKey][medicationId] || 
+            !this.entries[dateKey][medicationId].doses || 
+            !this.entries[dateKey][medicationId].doses[doseIndex]) {
             alert('No entry found to update');
             return;
         }
 
-        this.entries[dateKey][medicationId].timestamp = timestamp;
+        this.entries[dateKey][medicationId].doses[doseIndex].timestamp = timestamp;
 
         try {
-            await this.api.updateEntryTimestamp(dateKey, medicationId, timestamp);
+            await this.api.updateEntryTimestamp(dateKey, medicationId, timestamp, doseIndex);
             this.renderTrackingInterface(dateKey);
             this.renderCalendar();
         } catch (error) {
             console.error('Failed to update timestamp:', error);
             alert('Failed to update timestamp. Please try again.');
         }
+    }
+
+    switchTab(tabName) {
+        // Update tab buttons
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+        if (tabName === 'calendar') {
+            document.getElementById('calendarTab').classList.add('active');
+            document.getElementById('calendarContent').classList.add('active');
+        } else if (tabName === 'data') {
+            document.getElementById('dataTab').classList.add('active');
+            document.getElementById('dataContent').classList.add('active');
+            this.renderDataView();
+        }
+    }
+
+    renderDataView() {
+        this.renderStats();
+        this.renderMedicationAnalytics();
+        this.renderRecentEntries();
+    }
+
+    renderStats() {
+        const statsContainer = document.getElementById('dataStats');
+        statsContainer.innerHTML = '';
+
+        // Calculate total entries
+        let totalEntries = 0;
+        let totalTaken = 0;
+        let totalMissed = 0;
+        let totalDays = 0;
+
+        Object.keys(this.entries).forEach(dateKey => {
+            const dayEntries = this.entries[dateKey];
+            Object.keys(dayEntries).forEach(medId => {
+                const medEntry = dayEntries[medId];
+                if (medEntry.doses) {
+                    medEntry.doses.forEach(dose => {
+                        if (dose) {
+                            totalEntries++;
+                            if (dose.taken) {
+                                totalTaken++;
+                            } else {
+                                totalMissed++;
+                            }
+                        }
+                    });
+                }
+            });
+            totalDays++;
+        });
+
+        const adherenceRate = totalEntries > 0 ? Math.round((totalTaken / totalEntries) * 100) : 0;
+
+        const stats = [
+            { label: 'Total Entries', value: totalEntries, sublabel: 'All doses tracked' },
+            { label: 'Taken', value: totalTaken, sublabel: 'Successfully taken' },
+            { label: 'Missed', value: totalMissed, sublabel: 'Missed doses' },
+            { label: 'Adherence Rate', value: `${adherenceRate}%`, sublabel: 'Overall compliance' }
+        ];
+
+        stats.forEach(stat => {
+            const card = document.createElement('div');
+            card.className = 'stat-card';
+            card.innerHTML = `
+                <h3>${stat.label}</h3>
+                <div class="stat-value">${stat.value}</div>
+                <div class="stat-label">${stat.sublabel}</div>
+            `;
+            statsContainer.appendChild(card);
+        });
+    }
+
+    renderMedicationAnalytics() {
+        const analyticsContainer = document.getElementById('medicationAnalytics');
+        analyticsContainer.innerHTML = '';
+
+        if (this.medications.length === 0) {
+            analyticsContainer.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">No medications to analyze. Add medications to see analytics.</p>';
+            return;
+        }
+
+        const title = document.createElement('h3');
+        title.textContent = 'Medication Analytics';
+        analyticsContainer.appendChild(title);
+
+        this.medications.forEach(med => {
+            const chart = document.createElement('div');
+            chart.className = 'medication-chart';
+
+            // Calculate stats for this medication
+            let totalDoses = 0;
+            let takenDoses = 0;
+            let missedDoses = 0;
+            const dates = [];
+
+            Object.keys(this.entries).forEach(dateKey => {
+                const dayEntries = this.entries[dateKey];
+                const medEntry = dayEntries[med.id];
+                if (medEntry && medEntry.doses) {
+                    medEntry.doses.forEach((dose, index) => {
+                        if (dose) {
+                            totalDoses++;
+                            if (dose.taken) {
+                                takenDoses++;
+                            } else {
+                                missedDoses++;
+                            }
+                            dates.push({ date: dateKey, doseIndex: index, ...dose });
+                        }
+                    });
+                }
+            });
+
+            const adherenceRate = totalDoses > 0 ? Math.round((takenDoses / totalDoses) * 100) : 0;
+
+            chart.innerHTML = `
+                <div class="medication-chart-header">
+                    <h4>${med.name}</h4>
+                    <div class="adherence-rate">${adherenceRate}%</div>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${adherenceRate}%">${adherenceRate}%</div>
+                </div>
+                <div class="chart-details">
+                    <div class="chart-detail-item">
+                        <span class="chart-detail-label">Total Doses:</span>
+                        <span class="chart-detail-value">${totalDoses}</span>
+                    </div>
+                    <div class="chart-detail-item">
+                        <span class="chart-detail-label">Taken:</span>
+                        <span class="chart-detail-value" style="color: #28a745;">${takenDoses}</span>
+                    </div>
+                    <div class="chart-detail-item">
+                        <span class="chart-detail-label">Missed:</span>
+                        <span class="chart-detail-value" style="color: #dc3545;">${missedDoses}</span>
+                    </div>
+                    <div class="chart-detail-item">
+                        <span class="chart-detail-label">Frequency:</span>
+                        <span class="chart-detail-value">${med.timesPerDay || 1}x per day</span>
+                    </div>
+                </div>
+            `;
+
+            analyticsContainer.appendChild(chart);
+        });
+    }
+
+    renderRecentEntries() {
+        const entriesContainer = document.getElementById('recentEntries');
+        entriesContainer.innerHTML = '';
+
+        const title = document.createElement('h3');
+        title.textContent = 'Recent Entries';
+        entriesContainer.appendChild(title);
+
+        // Collect all entries with dates
+        const allEntries = [];
+        Object.keys(this.entries).forEach(dateKey => {
+            const dayEntries = this.entries[dateKey];
+            Object.keys(dayEntries).forEach(medId => {
+                const medEntry = dayEntries[medId];
+                const medication = this.medications.find(m => m.id === medId);
+                if (medication && medEntry.doses) {
+                    medEntry.doses.forEach((dose, index) => {
+                        if (dose) {
+                            allEntries.push({
+                                date: dateKey,
+                                medication: medication.name,
+                                doseIndex: index,
+                                ...dose
+                            });
+                        }
+                    });
+                }
+            });
+        });
+
+        // Sort by timestamp (most recent first)
+        allEntries.sort((a, b) => {
+            const dateA = a.timestamp ? new Date(a.timestamp) : new Date(a.date);
+            const dateB = b.timestamp ? new Date(b.timestamp) : new Date(b.date);
+            return dateB - dateA;
+        });
+
+        // Show last 20 entries
+        const recentEntries = allEntries.slice(0, 20);
+
+        if (recentEntries.length === 0) {
+            entriesContainer.innerHTML += '<p style="color: #999; text-align: center; padding: 20px;">No entries yet. Start tracking your medications!</p>';
+            return;
+        }
+
+        const entryList = document.createElement('div');
+        entryList.className = 'entry-list';
+
+        recentEntries.forEach(entry => {
+            const entryItem = document.createElement('div');
+            entryItem.className = 'entry-item';
+
+            const info = document.createElement('div');
+            info.className = 'entry-item-info';
+
+            const name = document.createElement('div');
+            name.className = 'entry-item-name';
+            const doseText = entry.doseIndex > 0 ? ` (Dose ${entry.doseIndex + 1})` : '';
+            name.textContent = entry.medication + doseText;
+            info.appendChild(name);
+
+            const date = document.createElement('div');
+            date.className = 'entry-item-date';
+            const dateObj = entry.timestamp ? new Date(entry.timestamp) : new Date(entry.date);
+            date.textContent = dateObj.toLocaleString();
+            info.appendChild(date);
+
+            entryItem.appendChild(info);
+
+            const status = document.createElement('div');
+            status.className = `entry-item-status ${entry.taken ? 'taken' : 'missed'}`;
+            status.textContent = entry.taken ? '✓ Taken' : '✗ Missed';
+            entryItem.appendChild(status);
+
+            entryList.appendChild(entryItem);
+        });
+
+        entriesContainer.appendChild(entryList);
     }
 }
 

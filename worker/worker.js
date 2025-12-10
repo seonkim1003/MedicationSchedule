@@ -97,7 +97,7 @@ export default {
             // POST /api/entry - Save medication entry
             if (path === '/api/entry' && request.method === 'POST') {
                 const body = await request.json();
-                const { date, medicationId, taken, timestamp } = body;
+                const { date, medicationId, taken, timestamp, doseIndex } = body;
 
                 if (!date || medicationId === undefined || taken === undefined) {
                     return errorResponse('date, medicationId, and taken are required');
@@ -107,7 +107,21 @@ export default {
                 const existingData = await env.MEDICATION_KV.get(entryKey);
                 const entries = existingData ? JSON.parse(existingData) : {};
 
-                entries[medicationId] = {
+                if (!entries[medicationId]) {
+                    entries[medicationId] = { doses: [] };
+                }
+
+                if (!entries[medicationId].doses) {
+                    entries[medicationId].doses = [];
+                }
+
+                const doseIdx = doseIndex || 0;
+                // Ensure doses array is large enough
+                while (entries[medicationId].doses.length <= doseIdx) {
+                    entries[medicationId].doses.push(null);
+                }
+
+                entries[medicationId].doses[doseIdx] = {
                     taken: Boolean(taken),
                     timestamp: timestamp || new Date().toISOString(),
                 };
@@ -120,7 +134,7 @@ export default {
             // PUT /api/entry - Update entry timestamp
             if (path === '/api/entry' && request.method === 'PUT') {
                 const body = await request.json();
-                const { date, medicationId, timestamp } = body;
+                const { date, medicationId, timestamp, doseIndex } = body;
 
                 if (!date || !medicationId || !timestamp) {
                     return errorResponse('date, medicationId, and timestamp are required');
@@ -134,11 +148,16 @@ export default {
                 }
 
                 const entries = JSON.parse(existingData);
-                if (!entries[medicationId]) {
+                if (!entries[medicationId] || !entries[medicationId].doses) {
                     return errorResponse('Medication entry not found', 404);
                 }
 
-                entries[medicationId].timestamp = timestamp;
+                const doseIdx = doseIndex || 0;
+                if (!entries[medicationId].doses[doseIdx]) {
+                    return errorResponse('Dose entry not found', 404);
+                }
+
+                entries[medicationId].doses[doseIdx].timestamp = timestamp;
                 await env.MEDICATION_KV.put(entryKey, JSON.stringify(entries));
 
                 return jsonResponse({ success: true, entry: entries[medicationId] });
