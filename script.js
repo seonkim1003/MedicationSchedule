@@ -847,7 +847,6 @@ class MedicationTracker {
             alert('Failed to clear status. Please try again.');
         }
     }
-
     switchTab(tabName) {
         // Update tab buttons
         document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
