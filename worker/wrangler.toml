@@ -8,7 +8,7 @@ compatibility_date = "2024-01-01"
 # Then update the id below with the actual namespace ID
 [[kv_namespaces]]
 binding = "MEDICATION_KV"
-id = "YOUR_KV_NAMESPACE_ID"  # Replace with your actual KV namespace ID
+id = "b17c7a875ddb46eda0f76d90dcb7688a"
 
 # For production, you may want to add:
 # [env.production]
