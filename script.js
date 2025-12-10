@@ -3,14 +3,10 @@
 // For production, use your deployed Worker URL
 const API_BASE_URL = 'https://medication-tracker-api.seonkim1003.workers.dev';
 
-// Generate or retrieve user ID
+// Use shared user ID for all users
 function getUserId() {
-    let userId = localStorage.getItem('userId');
-    if (!userId) {
-        userId = 'user-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-        localStorage.setItem('userId', userId);
-    }
-    return userId;
+    // All users share the same data
+    return 'shared';
 }
 
 // API Client
