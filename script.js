@@ -1,6 +1,7 @@
 // API Configuration
-const API_BASE_URL = 'https://your-worker.your-subdomain.workers.dev'; // Update with your Worker URL
 // For local development, use: 'http://localhost:8787'
+// For production, use your deployed Worker URL
+const API_BASE_URL = 'https://medication-tracker-api.seonkim1003.workers.dev';
 
 // Generate or retrieve user ID
 function getUserId() {
@@ -38,6 +39,12 @@ class APIClient {
             return await response.json();
         } catch (error) {
             console.error('API request failed:', error);
+            // Provide more helpful error message
+            if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
+                const helpfulError = new Error('Cannot connect to API. Make sure the Worker is running. For local development, run: npm run worker:dev');
+                helpfulError.originalError = error;
+                throw helpfulError;
+            }
             throw error;
         }
     }
@@ -327,7 +334,10 @@ class MedicationTracker {
         } catch (error) {
             console.error('Failed to save medication:', error);
             this.medications.pop(); // Revert on error
-            alert('Failed to save medication. Please try again.');
+            const errorMsg = error.message && error.message.includes('Cannot connect to API')
+                ? 'Cannot connect to API server. Please make sure the Worker is running.\n\nFor local development, run: npm run worker:dev'
+                : 'Failed to save medication. Please try again.';
+            alert(errorMsg);
         }
     }
 
