@@ -186,6 +186,46 @@ export default {
                 return jsonResponse({ success: true });
             }
 
+            // DELETE /api/entry - Delete medication entry (clear status)
+            if (path === '/api/entry' && request.method === 'DELETE') {
+                const body = await request.json();
+                const { date, medicationId, doseIndex } = body;
+
+                if (!date || !medicationId || doseIndex === undefined) {
+                    return errorResponse('date, medicationId, and doseIndex are required');
+                }
+
+                const entryKey = `user:${userId}:entries:${date}`;
+                const existingData = await env.MEDICATION_KV.get(entryKey);
+                
+                if (!existingData) {
+                    return jsonResponse({ success: true }); // Already deleted
+                }
+
+                const entries = JSON.parse(existingData);
+                if (!entries[medicationId] || !entries[medicationId].doses) {
+                    return jsonResponse({ success: true }); // Already deleted
+                }
+
+                // Remove the specific dose
+                entries[medicationId].doses[doseIndex] = null;
+
+                // Clean up if all doses are null
+                const hasAnyDoses = entries[medicationId].doses.some(d => d !== null);
+                if (!hasAnyDoses) {
+                    delete entries[medicationId];
+                }
+
+                // If no medications left for this day, delete the entry
+                if (Object.keys(entries).length === 0) {
+                    await env.MEDICATION_KV.delete(entryKey);
+                } else {
+                    await env.MEDICATION_KV.put(entryKey, JSON.stringify(entries));
+                }
+
+                return jsonResponse({ success: true });
+            }
+
             // 404 for unknown routes
             return errorResponse('Not found', 404);
         } catch (error) {
@@ -194,4 +234,3 @@ export default {
         }
     },
 };
-
