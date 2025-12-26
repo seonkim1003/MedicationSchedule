@@ -13,6 +13,11 @@
                 <h1>Medication Tracker</h1>
             </div>
             <div style="display: flex; gap: 10px; align-items: center;">
+                <div id="authStatus" style="display: flex; align-items: center; gap: 10px;">
+                    <span id="authStatusText" style="font-size: 14px; opacity: 0.9;">View Only</span>
+                    <button class="auth-btn" id="loginBtn">🔒 Login to Edit</button>
+                    <button class="auth-btn" id="logoutBtn" style="display: none;">Logout</button>
+                </div>
                 <div class="profile-selector">
                     <label for="profileSelect" style="margin-right: 10px; font-size: 14px; opacity: 0.9;">Profile:</label>
                     <select id="profileSelect" class="profile-select">
@@ -48,6 +53,24 @@
             <div class="calendar-days" id="calendarDays"></div>
         </div>
         </div>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div class="modal" id="loginModal">
+        <div class="modal-content login-modal-content">
+            <div class="modal-header">
+                <h2>Login to Edit</h2>
+                <button class="close-btn" id="closeLogin">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: #666; margin-bottom: 20px;">Enter password to make changes to the medication tracker.</p>
+                <div style="display: flex; flex-direction: column; gap: 15px;">
+                    <input type="password" id="passwordInput" placeholder="Enter password" style="padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px;">
+                    <button class="add-btn" id="submitLogin">Login</button>
+                    <p id="loginError" style="color: #dc3545; font-size: 14px; text-align: center; display: none;"></p>
+                </div>
+            </div>
         </div>
     </div>
 

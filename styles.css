@@ -71,6 +71,22 @@ body {
     display: block;
 }
 
+.auth-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s ease;
+}
+
+.auth-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-2px);
+}
+
 .settings-btn {
     background: rgba(255, 255, 255, 0.2);
     border: 2px solid rgba(255, 255, 255, 0.3);
@@ -87,12 +103,24 @@ body {
     transform: translateY(-2px);
 }
 
+.settings-btn:disabled,
+.auth-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.login-modal-content {
+    max-width: 400px;
+}
+
 .calendar-container {
     background: white;
     border-radius: 20px;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     overflow: hidden;
     padding: 30px;
+    position: relative;
 }
 
 .calendar-header {

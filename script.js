@@ -6,6 +6,48 @@ const API_BASE_URL = 'https://medication-tracker-api.seonkim1003.workers.dev';
 // Available users
 const USERS = ['Seonho', 'Peter', 'Angelina'];
 
+// Authentication state
+let isAuthenticated = false;
+let authToken = null;
+
+// Check authentication status from localStorage
+function checkAuthStatus() {
+    const stored = localStorage.getItem('medicationAuth');
+    if (stored) {
+        try {
+            const auth = JSON.parse(stored);
+            if (auth.token && auth.expires && new Date(auth.expires) > new Date()) {
+                isAuthenticated = true;
+                authToken = auth.token;
+                return true;
+            }
+        } catch (e) {
+            // Invalid stored auth
+            localStorage.removeItem('medicationAuth');
+        }
+    }
+    return false;
+}
+
+// Save authentication
+function saveAuth(token) {
+    // Set expiration to 24 hours from now
+    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    localStorage.setItem('medicationAuth', JSON.stringify({ token, expires }));
+    isAuthenticated = true;
+    authToken = token;
+}
+
+// Clear authentication
+function clearAuth() {
+    localStorage.removeItem('medicationAuth');
+    isAuthenticated = false;
+    authToken = null;
+}
+
+// Initialize auth on load
+checkAuthStatus();
+
 // Get user ID from localStorage or default to first user
 function getUserId() {
     const currentUser = localStorage.getItem('currentUser');
@@ -37,19 +79,32 @@ class APIClient {
 
     async request(endpoint, options = {}) {
         const url = `${this.baseURL}${endpoint}`;
+        const headers = {
+            'Content-Type': 'application/json',
+            'X-User-ID': this.userId,
+            ...options.headers,
+        };
+        
+        // Add authentication token for write operations
+        if (isAuthenticated && authToken && ['POST', 'PUT', 'DELETE'].includes(options.method || 'GET')) {
+            headers['Authorization'] = `Bearer ${authToken}`;
+        }
+        
         const config = {
             ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                'X-User-ID': this.userId,
-                ...options.headers,
-            },
+            headers,
         };
 
         try {
             const response = await fetch(url, config);
             if (!response.ok) {
-                throw new Error(`API error: ${response.status}`);
+                if (response.status === 401) {
+                    // Authentication failed
+                    clearAuth();
+                    throw new Error('Authentication failed. Please login again.');
+                }
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `API error: ${response.status}`);
             }
             return await response.json();
         } catch (error) {
@@ -136,6 +191,110 @@ class MedicationTracker {
         this.renderCalendar();
         this.attachEventListeners();
         this.setupProfileSelector();
+        this.setupAuthUI();
+        this.updateAuthUI();
+    }
+    
+    setupAuthUI() {
+        // Login button
+        document.getElementById('loginBtn').addEventListener('click', () => {
+            this.openLoginModal();
+        });
+        
+        // Logout button
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            this.logout();
+        });
+        
+        // Login modal
+        document.getElementById('closeLogin').addEventListener('click', () => {
+            this.closeLoginModal();
+        });
+        
+        document.getElementById('loginModal').addEventListener('click', (e) => {
+            if (e.target.id === 'loginModal') {
+                this.closeLoginModal();
+            }
+        });
+        
+        // Submit login
+        document.getElementById('submitLogin').addEventListener('click', () => {
+            this.handleLogin();
+        });
+        
+        // Enter key on password input
+        document.getElementById('passwordInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.handleLogin();
+            }
+        });
+    }
+    
+    openLoginModal() {
+        document.getElementById('loginModal').classList.add('active');
+        document.getElementById('passwordInput').focus();
+        document.getElementById('loginError').style.display = 'none';
+    }
+    
+    closeLoginModal() {
+        document.getElementById('loginModal').classList.remove('active');
+        document.getElementById('passwordInput').value = '';
+        document.getElementById('loginError').style.display = 'none';
+    }
+    
+    async handleLogin() {
+        const password = document.getElementById('passwordInput').value;
+        const errorEl = document.getElementById('loginError');
+        
+        if (!password) {
+            errorEl.textContent = 'Please enter a password';
+            errorEl.style.display = 'block';
+            return;
+        }
+        
+        // Try to make an authenticated request to verify password
+        // We'll use a test endpoint or just save it and let the API reject if wrong
+        saveAuth(password);
+        this.updateAuthUI();
+        this.closeLoginModal();
+        
+        // Test the auth by trying to load data (which should work)
+        // If it fails on next write, user will see error
+    }
+    
+    logout() {
+        clearAuth();
+        this.updateAuthUI();
+        // Reload calendar to show read-only state
+        this.renderCalendar();
+    }
+    
+    updateAuthUI() {
+        const loginBtn = document.getElementById('loginBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const authStatusText = document.getElementById('authStatusText');
+        const settingsBtn = document.getElementById('settingsBtn');
+        
+        if (isAuthenticated) {
+            loginBtn.style.display = 'none';
+            logoutBtn.style.display = 'block';
+            authStatusText.textContent = '✓ Authenticated';
+            settingsBtn.disabled = false;
+        } else {
+            loginBtn.style.display = 'block';
+            logoutBtn.style.display = 'none';
+            authStatusText.textContent = 'View Only';
+            settingsBtn.disabled = true;
+        }
+    }
+    
+    requireAuth() {
+        if (!isAuthenticated) {
+            alert('Please login to make changes. Click "Login to Edit" button.');
+            this.openLoginModal();
+            return false;
+        }
+        return true;
     }
 
     setupProfileSelector() {
@@ -189,7 +348,9 @@ class MedicationTracker {
 
         // Settings modal
         document.getElementById('settingsBtn').addEventListener('click', () => {
-            this.openSettingsModal();
+            if (this.requireAuth()) {
+                this.openSettingsModal();
+            }
         });
 
         document.getElementById('closeSettings').addEventListener('click', () => {
@@ -335,6 +496,23 @@ class MedicationTracker {
 
         const calendarDays = document.getElementById('calendarDays');
         calendarDays.innerHTML = '';
+        
+        // Add read-only indicator if not authenticated
+        const calendarContainer = document.querySelector('.calendar-container');
+        let readOnlyIndicator = document.getElementById('readOnlyIndicator');
+        if (!isAuthenticated) {
+            if (!readOnlyIndicator) {
+                readOnlyIndicator = document.createElement('div');
+                readOnlyIndicator.id = 'readOnlyIndicator';
+                readOnlyIndicator.style.cssText = 'position: absolute; top: 10px; right: 10px; background: rgba(102, 126, 234, 0.9); color: white; padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600; z-index: 10;';
+                readOnlyIndicator.textContent = '👁️ View Only - Login to Edit';
+                calendarContainer.style.position = 'relative';
+                calendarContainer.appendChild(readOnlyIndicator);
+            }
+            readOnlyIndicator.style.display = 'block';
+        } else if (readOnlyIndicator) {
+            readOnlyIndicator.style.display = 'none';
+        }
 
         const daysInMonth = this.getDaysInMonth();
         const firstDay = this.getFirstDayOfMonth();
@@ -384,7 +562,13 @@ class MedicationTracker {
             dayCell.appendChild(statusBoxes);
 
             dayCell.addEventListener('click', () => {
-                this.openTrackingModal(date);
+                if (isAuthenticated) {
+                    this.openTrackingModal(date);
+                } else {
+                    // Show read-only info or prompt to login
+                    alert('Please login to track medications. Click "Login to Edit" button.');
+                    this.openLoginModal();
+                }
             });
 
             calendarDays.appendChild(dayCell);
@@ -484,6 +668,10 @@ class MedicationTracker {
     }
 
     async addMedication() {
+        if (!this.requireAuth()) {
+            return;
+        }
+        
         const input = document.getElementById('newMedicationName');
         const name = input.value.trim();
 
@@ -529,14 +717,23 @@ class MedicationTracker {
         } catch (error) {
             console.error('Failed to save medication:', error);
             this.medications.pop(); // Revert on error
-            const errorMsg = error.message && error.message.includes('Cannot connect to API')
-                ? 'Cannot connect to API server. Please make sure the Worker is running.\n\nFor local development, run: npm run worker:dev'
-                : 'Failed to save medication. Please try again.';
+            let errorMsg = error.message || 'Failed to save medication. Please try again.';
+            if (error.message && error.message.includes('Authentication')) {
+                clearAuth();
+                this.updateAuthUI();
+                errorMsg = 'Authentication required. Please login again.';
+            } else if (error.message && error.message.includes('Cannot connect to API')) {
+                errorMsg = 'Cannot connect to API server. Please make sure the Worker is running.\n\nFor local development, run: npm run worker:dev';
+            }
             alert(errorMsg);
         }
     }
 
     async deleteMedication(medicationId) {
+        if (!this.requireAuth()) {
+            return;
+        }
+        
         if (!confirm('Are you sure you want to delete this medication?')) {
             return;
         }
@@ -549,7 +746,13 @@ class MedicationTracker {
             this.renderCalendar();
         } catch (error) {
             console.error('Failed to delete medication:', error);
-            alert('Failed to delete medication. Please try again.');
+            if (error.message && error.message.includes('Authentication')) {
+                clearAuth();
+                this.updateAuthUI();
+                alert('Authentication required. Please login again.');
+            } else {
+                alert('Failed to delete medication. Please try again.');
+            }
         }
     }
 
@@ -745,6 +948,10 @@ class MedicationTracker {
     }
 
     async trackMedicationDose(dateKey, medicationId, doseIndex, taken) {
+        if (!this.requireAuth()) {
+            return;
+        }
+        
         const timestamp = new Date().toISOString();
 
         if (!this.entries[dateKey]) {
@@ -777,11 +984,21 @@ class MedicationTracker {
             console.error('Failed to save entry:', error);
             // Revert on error
             this.entries[dateKey][medicationId].doses[doseIndex] = null;
-            alert('Failed to save entry. Please try again.');
+            if (error.message && error.message.includes('Authentication')) {
+                clearAuth();
+                this.updateAuthUI();
+                alert('Authentication required. Please login again.');
+            } else {
+                alert('Failed to save entry. Please try again.');
+            }
         }
     }
 
     async updateTimestamp(dateKey, medicationId, doseIndex, timestamp) {
+        if (!this.requireAuth()) {
+            return;
+        }
+        
         if (!this.entries[dateKey] || !this.entries[dateKey][medicationId] || 
             !this.entries[dateKey][medicationId].doses || 
             !this.entries[dateKey][medicationId].doses[doseIndex]) {
@@ -797,11 +1014,21 @@ class MedicationTracker {
             this.renderCalendar();
         } catch (error) {
             console.error('Failed to update timestamp:', error);
-            alert('Failed to update timestamp. Please try again.');
+            if (error.message && error.message.includes('Authentication')) {
+                clearAuth();
+                this.updateAuthUI();
+                alert('Authentication required. Please login again.');
+            } else {
+                alert('Failed to update timestamp. Please try again.');
+            }
         }
     }
 
     async clearMedicationStatus(dateKey, medicationId, doseIndex) {
+        if (!this.requireAuth()) {
+            return;
+        }
+        
         if (!confirm('Are you sure you want to clear this status?')) {
             return;
         }
@@ -831,7 +1058,13 @@ class MedicationTracker {
             this.renderCalendar();
         } catch (error) {
             console.error('Failed to clear status:', error);
-            alert('Failed to clear status. Please try again.');
+            if (error.message && error.message.includes('Authentication')) {
+                clearAuth();
+                this.updateAuthUI();
+                alert('Authentication required. Please login again.');
+            } else {
+                alert('Failed to clear status. Please try again.');
+            }
         }
     }
 
