@@ -963,7 +963,15 @@ class MedicationTracker {
                 }
                 updateBtn.addEventListener('click', () => {
                     if (isAuthenticated) {
+                        if (!timeInput.value) {
+                            alert('Please select a date and time before updating.');
+                            return;
+                        }
                         const newTimestamp = new Date(timeInput.value).toISOString();
+                        if (isNaN(new Date(newTimestamp).getTime())) {
+                            alert('Invalid date/time. Please select a valid date and time.');
+                            return;
+                        }
                         this.updateTimestamp(dateKey, med.id, i, newTimestamp);
                     } else {
                         alert('Please login to update timestamps. Click "Login to Edit" button.');
@@ -1060,6 +1068,12 @@ class MedicationTracker {
             return;
         }
 
+        // Validate timestamp
+        if (!timestamp || isNaN(new Date(timestamp).getTime())) {
+            alert('Invalid timestamp. Please select a valid date and time.');
+            return;
+        }
+
         this.entries[dateKey][medicationId].doses[doseIndex].timestamp = timestamp;
 
         try {
@@ -1068,13 +1082,26 @@ class MedicationTracker {
             this.renderCalendar();
         } catch (error) {
             console.error('Failed to update timestamp:', error);
+            console.error('Error details:', {
+                dateKey,
+                medicationId,
+                doseIndex,
+                timestamp,
+                isAuthenticated,
+                authToken: authToken ? 'present' : 'missing'
+            });
+            
+            let errorMsg = 'Failed to update timestamp. ';
             if (error.message && error.message.includes('Authentication')) {
                 clearAuth();
                 this.updateAuthUI();
-                alert('Authentication required. Please login again.');
+                errorMsg = 'Authentication required. Please login again.';
+            } else if (error.message) {
+                errorMsg += error.message;
             } else {
-                alert('Failed to update timestamp. Please try again.');
+                errorMsg += 'Please try again.';
             }
+            alert(errorMsg);
         }
     }
 
