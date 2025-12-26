@@ -252,14 +252,18 @@ class MedicationTracker {
             return;
         }
         
-        // Try to make an authenticated request to verify password
-        // We'll use a test endpoint or just save it and let the API reject if wrong
+        // Save the password as auth token
+        // The API will verify it on the next write operation
         saveAuth(password);
         this.updateAuthUI();
         this.closeLoginModal();
         
-        // Test the auth by trying to load data (which should work)
-        // If it fails on next write, user will see error
+        // Show success message
+        const authStatusText = document.getElementById('authStatusText');
+        const originalText = authStatusText.textContent;
+        authStatusText.textContent = '✓ Authenticated';
+        
+        // The updateAuthUI already called renderCalendar() which will hide the read-only indicator
     }
     
     logout() {
@@ -285,6 +289,15 @@ class MedicationTracker {
             logoutBtn.style.display = 'none';
             authStatusText.textContent = 'View Only';
             settingsBtn.disabled = true;
+        }
+        
+        // Update calendar to show/hide read-only indicator
+        this.renderCalendar();
+        
+        // If tracking modal is open, re-render it to update button states
+        if (this.selectedDate) {
+            const dateKey = this.formatDateKey(this.selectedDate);
+            this.renderTrackingInterface(dateKey);
         }
     }
     
@@ -562,13 +575,9 @@ class MedicationTracker {
             dayCell.appendChild(statusBoxes);
 
             dayCell.addEventListener('click', () => {
-                if (isAuthenticated) {
-                    this.openTrackingModal(date);
-                } else {
-                    // Show read-only info or prompt to login
-                    alert('Please login to track medications. Click "Login to Edit" button.');
-                    this.openLoginModal();
-                }
+                // Always allow opening the modal to view data
+                // Buttons will be disabled if not authenticated
+                this.openTrackingModal(date);
             });
 
             calendarDays.appendChild(dayCell);
@@ -883,16 +892,38 @@ class MedicationTracker {
                 const yesBtn = document.createElement('button');
                 yesBtn.className = `track-btn yes ${doseTaken === true ? 'active' : ''}`;
                 yesBtn.textContent = '✓ Yes';
+                yesBtn.disabled = !isAuthenticated;
+                if (!isAuthenticated) {
+                    yesBtn.title = 'Login to edit';
+                    yesBtn.style.opacity = '0.6';
+                    yesBtn.style.cursor = 'not-allowed';
+                }
                 yesBtn.addEventListener('click', () => {
-                    this.trackMedicationDose(dateKey, med.id, i, true);
+                    if (isAuthenticated) {
+                        this.trackMedicationDose(dateKey, med.id, i, true);
+                    } else {
+                        alert('Please login to track medications. Click "Login to Edit" button.');
+                        this.openLoginModal();
+                    }
                 });
                 buttons.appendChild(yesBtn);
 
                 const noBtn = document.createElement('button');
                 noBtn.className = `track-btn no ${doseTaken === false ? 'active' : ''}`;
                 noBtn.textContent = '✗ No';
+                noBtn.disabled = !isAuthenticated;
+                if (!isAuthenticated) {
+                    noBtn.title = 'Login to edit';
+                    noBtn.style.opacity = '0.6';
+                    noBtn.style.cursor = 'not-allowed';
+                }
                 noBtn.addEventListener('click', () => {
-                    this.trackMedicationDose(dateKey, med.id, i, false);
+                    if (isAuthenticated) {
+                        this.trackMedicationDose(dateKey, med.id, i, false);
+                    } else {
+                        alert('Please login to track medications. Click "Login to Edit" button.');
+                        this.openLoginModal();
+                    }
                 });
                 buttons.appendChild(noBtn);
 
@@ -923,9 +954,21 @@ class MedicationTracker {
 
                 const updateBtn = document.createElement('button');
                 updateBtn.textContent = 'Update Timestamp';
+                updateBtn.disabled = !isAuthenticated;
+                if (!isAuthenticated) {
+                    updateBtn.title = 'Login to edit';
+                    updateBtn.style.opacity = '0.6';
+                    updateBtn.style.cursor = 'not-allowed';
+                    timeInput.disabled = true;
+                }
                 updateBtn.addEventListener('click', () => {
-                    const newTimestamp = new Date(timeInput.value).toISOString();
-                    this.updateTimestamp(dateKey, med.id, i, newTimestamp);
+                    if (isAuthenticated) {
+                        const newTimestamp = new Date(timeInput.value).toISOString();
+                        this.updateTimestamp(dateKey, med.id, i, newTimestamp);
+                    } else {
+                        alert('Please login to update timestamps. Click "Login to Edit" button.');
+                        this.openLoginModal();
+                    }
                 });
                 editTimestamp.appendChild(updateBtn);
 
@@ -936,8 +979,19 @@ class MedicationTracker {
                     const clearBtn = document.createElement('button');
                     clearBtn.className = 'clear-status-btn';
                     clearBtn.textContent = 'Clear Status';
+                    clearBtn.disabled = !isAuthenticated;
+                    if (!isAuthenticated) {
+                        clearBtn.title = 'Login to edit';
+                        clearBtn.style.opacity = '0.6';
+                        clearBtn.style.cursor = 'not-allowed';
+                    }
                     clearBtn.addEventListener('click', () => {
-                        this.clearMedicationStatus(dateKey, med.id, i);
+                        if (isAuthenticated) {
+                            this.clearMedicationStatus(dateKey, med.id, i);
+                        } else {
+                            alert('Please login to clear status. Click "Login to Edit" button.');
+                            this.openLoginModal();
+                        }
                     });
                     item.appendChild(clearBtn);
                 }
