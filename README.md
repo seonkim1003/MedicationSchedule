@@ -11,8 +11,6 @@ A medication tracking calendar application that helps you track when you take yo
 - ✏️ Edit timestamps for past entries
 - 💾 Cloud storage via Cloudflare Workers + KV
 - 📱 Responsive design
-- 🔒 **Public read access** - Anyone can view calendars
-- 🔐 **Password-protected editing** - Password required to make changes
 
 ## Setup Instructions
 
@@ -80,19 +78,7 @@ For local development, use:
 const API_BASE_URL = 'http://localhost:8787';
 ```
 
-#### Step 6: Set Edit Password (Required for Production)
-For **production deployment**, set the password as a secret in Cloudflare:
-
-```bash
-cd worker
-wrangler secret put EDIT_PASSWORD
-```
-
-When prompted, enter: `SRC_Goat` (or your desired password)
-
-**Note**: For local development, the password is already set to `SRC_Goat` in the `.dev.vars` file. This password will be required for all write operations (adding medications, tracking doses, etc.).
-
-#### Step 7: Deploy Worker
+#### Step 6: Deploy Worker
 ```bash
 cd worker
 wrangler deploy
@@ -103,32 +89,21 @@ Or use the npm script:
 npm run worker:deploy
 ```
 
-#### Step 8: Test Locally (Optional)
-The password is already configured in `worker/.dev.vars` as `SRC_Goat` for local development.
-
-To start the worker locally:
+#### Step 7: Test Locally (Optional)
+To test the worker locally:
 ```bash
 npm run worker:dev
 ```
 
-This starts the worker on http://localhost:8787. Use password `SRC_Goat` when logging in to edit.
+This starts the worker on http://localhost:8787
 
 ## Usage
 
-### Viewing (Public Access)
-- Anyone can view the calendar without authentication
-- The calendar shows all medication tracking data in read-only mode
-- A "View Only" indicator appears when not authenticated
-
-### Editing (Password Required)
-1. **Login**: Click the "🔒 Login to Edit" button in the header and enter the password
-2. **Add Medications**: Once authenticated, click the Settings button (⚙️) to add medications
-3. **Track Daily**: Click on any day in the calendar to track medications for that day
-4. **Record Status**: Click "Yes" if you took the medication, "No" if you missed it
-5. **Edit Timestamps**: Use the timestamp editor to update when you actually took a medication if you forgot to record it
-6. **View Status**: See green boxes (taken) and red boxes (missed) beneath each day
-
-**Note**: Authentication expires after 24 hours. You'll need to login again to continue editing.
+1. **Add Medications**: Click the Settings button (⚙️) to add medications
+2. **Track Daily**: Click on any day in the calendar to track medications for that day
+3. **Record Status**: Click "Yes" if you took the medication, "No" if you missed it
+4. **Edit Timestamps**: Use the timestamp editor to update when you actually took a medication if you forgot to record it
+5. **View Status**: See green boxes (taken) and red boxes (missed) beneath each day
 
 ## Data Storage
 

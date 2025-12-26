@@ -4,7 +4,7 @@
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-User-ID, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, X-User-ID',
 };
 
 // Helper function to handle CORS preflight
@@ -21,28 +21,6 @@ function handleCORS(request) {
 // Get user ID from request headers
 function getUserId(request) {
     return request.headers.get('X-User-ID') || 'default-user';
-}
-
-// Verify password from request
-// Password is stored in Cloudflare Worker secrets (EDIT_PASSWORD)
-// Set it using: wrangler secret put EDIT_PASSWORD
-// For local development, set it in .dev.vars file
-function verifyPassword(request, env) {
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return false;
-    }
-    const token = authHeader.substring(7);
-    // Compare with password from environment variable
-    // Set this using: wrangler secret put EDIT_PASSWORD (production)
-    // Or in .dev.vars file (local development)
-    const correctPassword = env.EDIT_PASSWORD || 'SRC_Goat'; // Default for local dev
-    return token === correctPassword;
-}
-
-// Check if request is a write operation
-function isWriteOperation(method) {
-    return ['POST', 'PUT', 'DELETE'].includes(method);
 }
 
 // Format response with CORS headers
@@ -73,15 +51,7 @@ export default {
         const userId = getUserId(request);
 
         try {
-            // Check authentication for write operations
-            if (isWriteOperation(request.method)) {
-                if (!verifyPassword(request, env)) {
-                    return errorResponse('Authentication required. Please enter password to make changes.', 401);
-                }
-            }
-
-            // GET /api/data - Retrieve medication data (public, no auth required)
-            // Data is user-specific but publicly viewable
+            // GET /api/data - Retrieve all medication data
             if (path === '/api/data' && request.method === 'GET') {
                 const medicationsKey = `user:${userId}:medications`;
                 

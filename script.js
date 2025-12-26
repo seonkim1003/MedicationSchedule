@@ -6,48 +6,6 @@ const API_BASE_URL = 'https://medication-tracker-api.seonkim1003.workers.dev';
 // Available users
 const USERS = ['Seonho', 'Peter', 'Angelina'];
 
-// Authentication state
-let isAuthenticated = false;
-let authToken = null;
-
-// Check authentication status from localStorage
-function checkAuthStatus() {
-    const stored = localStorage.getItem('medicationAuth');
-    if (stored) {
-        try {
-            const auth = JSON.parse(stored);
-            if (auth.token && auth.expires && new Date(auth.expires) > new Date()) {
-                isAuthenticated = true;
-                authToken = auth.token;
-                return true;
-            }
-        } catch (e) {
-            // Invalid stored auth
-            localStorage.removeItem('medicationAuth');
-        }
-    }
-    return false;
-}
-
-// Save authentication
-function saveAuth(token) {
-    // Set expiration to 24 hours from now
-    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    localStorage.setItem('medicationAuth', JSON.stringify({ token, expires }));
-    isAuthenticated = true;
-    authToken = token;
-}
-
-// Clear authentication
-function clearAuth() {
-    localStorage.removeItem('medicationAuth');
-    isAuthenticated = false;
-    authToken = null;
-}
-
-// Initialize auth on load
-checkAuthStatus();
-
 // Get user ID from localStorage or default to first user
 function getUserId() {
     const currentUser = localStorage.getItem('currentUser');
@@ -79,32 +37,19 @@ class APIClient {
 
     async request(endpoint, options = {}) {
         const url = `${this.baseURL}${endpoint}`;
-        const headers = {
-            'Content-Type': 'application/json',
-            'X-User-ID': this.userId,
-            ...options.headers,
-        };
-        
-        // Add authentication token for write operations
-        if (isAuthenticated && authToken && ['POST', 'PUT', 'DELETE'].includes(options.method || 'GET')) {
-            headers['Authorization'] = `Bearer ${authToken}`;
-        }
-        
         const config = {
             ...options,
-            headers,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-User-ID': this.userId,
+                ...options.headers,
+            },
         };
 
         try {
             const response = await fetch(url, config);
             if (!response.ok) {
-                if (response.status === 401) {
-                    // Authentication failed
-                    clearAuth();
-                    throw new Error('Authentication failed. Please login again.');
-                }
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || `API error: ${response.status}`);
+                throw new Error(`API error: ${response.status}`);
             }
             return await response.json();
         } catch (error) {
@@ -181,6 +126,10 @@ class MedicationTracker {
         // Reload data for the new profile
         this.loadData().then(() => {
             this.renderCalendar();
+            // If on data tab, refresh it too
+            if (document.getElementById('dataTab') && document.getElementById('dataTab').classList.contains('active')) {
+                this.renderDataView();
+            }
         });
     }
 
@@ -191,123 +140,6 @@ class MedicationTracker {
         this.renderCalendar();
         this.attachEventListeners();
         this.setupProfileSelector();
-        this.setupAuthUI();
-        this.updateAuthUI();
-    }
-    
-    setupAuthUI() {
-        // Login button
-        document.getElementById('loginBtn').addEventListener('click', () => {
-            this.openLoginModal();
-        });
-        
-        // Logout button
-        document.getElementById('logoutBtn').addEventListener('click', () => {
-            this.logout();
-        });
-        
-        // Login modal
-        document.getElementById('closeLogin').addEventListener('click', () => {
-            this.closeLoginModal();
-        });
-        
-        document.getElementById('loginModal').addEventListener('click', (e) => {
-            if (e.target.id === 'loginModal') {
-                this.closeLoginModal();
-            }
-        });
-        
-        // Submit login
-        document.getElementById('submitLogin').addEventListener('click', () => {
-            this.handleLogin();
-        });
-        
-        // Enter key on password input
-        document.getElementById('passwordInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                this.handleLogin();
-            }
-        });
-    }
-    
-    openLoginModal() {
-        document.getElementById('loginModal').classList.add('active');
-        document.getElementById('passwordInput').focus();
-        document.getElementById('loginError').style.display = 'none';
-    }
-    
-    closeLoginModal() {
-        document.getElementById('loginModal').classList.remove('active');
-        document.getElementById('passwordInput').value = '';
-        document.getElementById('loginError').style.display = 'none';
-    }
-    
-    async handleLogin() {
-        const password = document.getElementById('passwordInput').value;
-        const errorEl = document.getElementById('loginError');
-        
-        if (!password) {
-            errorEl.textContent = 'Please enter a password';
-            errorEl.style.display = 'block';
-            return;
-        }
-        
-        // Save the password as auth token
-        // The API will verify it on the next write operation
-        saveAuth(password);
-        this.updateAuthUI();
-        this.closeLoginModal();
-        
-        // Show success message
-        const authStatusText = document.getElementById('authStatusText');
-        const originalText = authStatusText.textContent;
-        authStatusText.textContent = '✓ Authenticated';
-        
-        // The updateAuthUI already called renderCalendar() which will hide the read-only indicator
-    }
-    
-    logout() {
-        clearAuth();
-        this.updateAuthUI();
-        // Reload calendar to show read-only state
-        this.renderCalendar();
-    }
-    
-    updateAuthUI() {
-        const loginBtn = document.getElementById('loginBtn');
-        const logoutBtn = document.getElementById('logoutBtn');
-        const authStatusText = document.getElementById('authStatusText');
-        const settingsBtn = document.getElementById('settingsBtn');
-        
-        if (isAuthenticated) {
-            loginBtn.style.display = 'none';
-            logoutBtn.style.display = 'block';
-            authStatusText.textContent = '✓ Authenticated';
-            settingsBtn.disabled = false;
-        } else {
-            loginBtn.style.display = 'block';
-            logoutBtn.style.display = 'none';
-            authStatusText.textContent = 'View Only';
-            settingsBtn.disabled = true;
-        }
-        
-        // Update calendar to show/hide read-only indicator
-        this.renderCalendar();
-        
-        // If tracking modal is open, re-render it to update button states
-        if (this.selectedDate) {
-            const dateKey = this.formatDateKey(this.selectedDate);
-            this.renderTrackingInterface(dateKey);
-        }
-    }
-    
-    requireAuth() {
-        if (!isAuthenticated) {
-            alert('Please login to make changes. Click "Login to Edit" button.');
-            this.openLoginModal();
-            return false;
-        }
-        return true;
     }
 
     setupProfileSelector() {
@@ -361,9 +193,7 @@ class MedicationTracker {
 
         // Settings modal
         document.getElementById('settingsBtn').addEventListener('click', () => {
-            if (this.requireAuth()) {
-                this.openSettingsModal();
-            }
+            this.openSettingsModal();
         });
 
         document.getElementById('closeSettings').addEventListener('click', () => {
@@ -509,23 +339,6 @@ class MedicationTracker {
 
         const calendarDays = document.getElementById('calendarDays');
         calendarDays.innerHTML = '';
-        
-        // Add read-only indicator if not authenticated
-        const calendarContainer = document.querySelector('.calendar-container');
-        let readOnlyIndicator = document.getElementById('readOnlyIndicator');
-        if (!isAuthenticated) {
-            if (!readOnlyIndicator) {
-                readOnlyIndicator = document.createElement('div');
-                readOnlyIndicator.id = 'readOnlyIndicator';
-                readOnlyIndicator.style.cssText = 'position: absolute; top: 10px; right: 10px; background: rgba(102, 126, 234, 0.9); color: white; padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600; z-index: 10;';
-                readOnlyIndicator.textContent = '👁️ View Only - Login to Edit';
-                calendarContainer.style.position = 'relative';
-                calendarContainer.appendChild(readOnlyIndicator);
-            }
-            readOnlyIndicator.style.display = 'block';
-        } else if (readOnlyIndicator) {
-            readOnlyIndicator.style.display = 'none';
-        }
 
         const daysInMonth = this.getDaysInMonth();
         const firstDay = this.getFirstDayOfMonth();
@@ -575,8 +388,6 @@ class MedicationTracker {
             dayCell.appendChild(statusBoxes);
 
             dayCell.addEventListener('click', () => {
-                // Always allow opening the modal to view data
-                // Buttons will be disabled if not authenticated
                 this.openTrackingModal(date);
             });
 
@@ -677,10 +488,6 @@ class MedicationTracker {
     }
 
     async addMedication() {
-        if (!this.requireAuth()) {
-            return;
-        }
-        
         const input = document.getElementById('newMedicationName');
         const name = input.value.trim();
 
@@ -726,23 +533,14 @@ class MedicationTracker {
         } catch (error) {
             console.error('Failed to save medication:', error);
             this.medications.pop(); // Revert on error
-            let errorMsg = error.message || 'Failed to save medication. Please try again.';
-            if (error.message && error.message.includes('Authentication')) {
-                clearAuth();
-                this.updateAuthUI();
-                errorMsg = 'Authentication required. Please login again.';
-            } else if (error.message && error.message.includes('Cannot connect to API')) {
-                errorMsg = 'Cannot connect to API server. Please make sure the Worker is running.\n\nFor local development, run: npm run worker:dev';
-            }
+            const errorMsg = error.message && error.message.includes('Cannot connect to API')
+                ? 'Cannot connect to API server. Please make sure the Worker is running.\n\nFor local development, run: npm run worker:dev'
+                : 'Failed to save medication. Please try again.';
             alert(errorMsg);
         }
     }
 
     async deleteMedication(medicationId) {
-        if (!this.requireAuth()) {
-            return;
-        }
-        
         if (!confirm('Are you sure you want to delete this medication?')) {
             return;
         }
@@ -755,13 +553,7 @@ class MedicationTracker {
             this.renderCalendar();
         } catch (error) {
             console.error('Failed to delete medication:', error);
-            if (error.message && error.message.includes('Authentication')) {
-                clearAuth();
-                this.updateAuthUI();
-                alert('Authentication required. Please login again.');
-            } else {
-                alert('Failed to delete medication. Please try again.');
-            }
+            alert('Failed to delete medication. Please try again.');
         }
     }
 
@@ -892,38 +684,16 @@ class MedicationTracker {
                 const yesBtn = document.createElement('button');
                 yesBtn.className = `track-btn yes ${doseTaken === true ? 'active' : ''}`;
                 yesBtn.textContent = '✓ Yes';
-                yesBtn.disabled = !isAuthenticated;
-                if (!isAuthenticated) {
-                    yesBtn.title = 'Login to edit';
-                    yesBtn.style.opacity = '0.6';
-                    yesBtn.style.cursor = 'not-allowed';
-                }
                 yesBtn.addEventListener('click', () => {
-                    if (isAuthenticated) {
-                        this.trackMedicationDose(dateKey, med.id, i, true);
-                    } else {
-                        alert('Please login to track medications. Click "Login to Edit" button.');
-                        this.openLoginModal();
-                    }
+                    this.trackMedicationDose(dateKey, med.id, i, true);
                 });
                 buttons.appendChild(yesBtn);
 
                 const noBtn = document.createElement('button');
                 noBtn.className = `track-btn no ${doseTaken === false ? 'active' : ''}`;
                 noBtn.textContent = '✗ No';
-                noBtn.disabled = !isAuthenticated;
-                if (!isAuthenticated) {
-                    noBtn.title = 'Login to edit';
-                    noBtn.style.opacity = '0.6';
-                    noBtn.style.cursor = 'not-allowed';
-                }
                 noBtn.addEventListener('click', () => {
-                    if (isAuthenticated) {
-                        this.trackMedicationDose(dateKey, med.id, i, false);
-                    } else {
-                        alert('Please login to track medications. Click "Login to Edit" button.');
-                        this.openLoginModal();
-                    }
+                    this.trackMedicationDose(dateKey, med.id, i, false);
                 });
                 buttons.appendChild(noBtn);
 
@@ -954,29 +724,17 @@ class MedicationTracker {
 
                 const updateBtn = document.createElement('button');
                 updateBtn.textContent = 'Update Timestamp';
-                updateBtn.disabled = !isAuthenticated;
-                if (!isAuthenticated) {
-                    updateBtn.title = 'Login to edit';
-                    updateBtn.style.opacity = '0.6';
-                    updateBtn.style.cursor = 'not-allowed';
-                    timeInput.disabled = true;
-                }
                 updateBtn.addEventListener('click', () => {
-                    if (isAuthenticated) {
-                        if (!timeInput.value) {
-                            alert('Please select a date and time before updating.');
-                            return;
-                        }
-                        const newTimestamp = new Date(timeInput.value).toISOString();
-                        if (isNaN(new Date(newTimestamp).getTime())) {
-                            alert('Invalid date/time. Please select a valid date and time.');
-                            return;
-                        }
-                        this.updateTimestamp(dateKey, med.id, i, newTimestamp);
-                    } else {
-                        alert('Please login to update timestamps. Click "Login to Edit" button.');
-                        this.openLoginModal();
+                    if (!timeInput.value) {
+                        alert('Please select a date and time before updating.');
+                        return;
                     }
+                    const newTimestamp = new Date(timeInput.value).toISOString();
+                    if (isNaN(new Date(newTimestamp).getTime())) {
+                        alert('Invalid date/time. Please select a valid date and time.');
+                        return;
+                    }
+                    this.updateTimestamp(dateKey, med.id, i, newTimestamp);
                 });
                 editTimestamp.appendChild(updateBtn);
 
@@ -987,19 +745,8 @@ class MedicationTracker {
                     const clearBtn = document.createElement('button');
                     clearBtn.className = 'clear-status-btn';
                     clearBtn.textContent = 'Clear Status';
-                    clearBtn.disabled = !isAuthenticated;
-                    if (!isAuthenticated) {
-                        clearBtn.title = 'Login to edit';
-                        clearBtn.style.opacity = '0.6';
-                        clearBtn.style.cursor = 'not-allowed';
-                    }
                     clearBtn.addEventListener('click', () => {
-                        if (isAuthenticated) {
-                            this.clearMedicationStatus(dateKey, med.id, i);
-                        } else {
-                            alert('Please login to clear status. Click "Login to Edit" button.');
-                            this.openLoginModal();
-                        }
+                        this.clearMedicationStatus(dateKey, med.id, i);
                     });
                     item.appendChild(clearBtn);
                 }
@@ -1010,10 +757,6 @@ class MedicationTracker {
     }
 
     async trackMedicationDose(dateKey, medicationId, doseIndex, taken) {
-        if (!this.requireAuth()) {
-            return;
-        }
-        
         const timestamp = new Date().toISOString();
 
         if (!this.entries[dateKey]) {
@@ -1046,31 +789,15 @@ class MedicationTracker {
             console.error('Failed to save entry:', error);
             // Revert on error
             this.entries[dateKey][medicationId].doses[doseIndex] = null;
-            if (error.message && error.message.includes('Authentication')) {
-                clearAuth();
-                this.updateAuthUI();
-                alert('Authentication required. Please login again.');
-            } else {
-                alert('Failed to save entry. Please try again.');
-            }
+            alert('Failed to save entry. Please try again.');
         }
     }
 
     async updateTimestamp(dateKey, medicationId, doseIndex, timestamp) {
-        if (!this.requireAuth()) {
-            return;
-        }
-        
         if (!this.entries[dateKey] || !this.entries[dateKey][medicationId] || 
             !this.entries[dateKey][medicationId].doses || 
             !this.entries[dateKey][medicationId].doses[doseIndex]) {
             alert('No entry found to update');
-            return;
-        }
-
-        // Validate timestamp
-        if (!timestamp || isNaN(new Date(timestamp).getTime())) {
-            alert('Invalid timestamp. Please select a valid date and time.');
             return;
         }
 
@@ -1082,34 +809,11 @@ class MedicationTracker {
             this.renderCalendar();
         } catch (error) {
             console.error('Failed to update timestamp:', error);
-            console.error('Error details:', {
-                dateKey,
-                medicationId,
-                doseIndex,
-                timestamp,
-                isAuthenticated,
-                authToken: authToken ? 'present' : 'missing'
-            });
-            
-            let errorMsg = 'Failed to update timestamp. ';
-            if (error.message && error.message.includes('Authentication')) {
-                clearAuth();
-                this.updateAuthUI();
-                errorMsg = 'Authentication required. Please login again.';
-            } else if (error.message) {
-                errorMsg += error.message;
-            } else {
-                errorMsg += 'Please try again.';
-            }
-            alert(errorMsg);
+            alert('Failed to update timestamp. Please try again.');
         }
     }
 
     async clearMedicationStatus(dateKey, medicationId, doseIndex) {
-        if (!this.requireAuth()) {
-            return;
-        }
-        
         if (!confirm('Are you sure you want to clear this status?')) {
             return;
         }
@@ -1139,13 +843,7 @@ class MedicationTracker {
             this.renderCalendar();
         } catch (error) {
             console.error('Failed to clear status:', error);
-            if (error.message && error.message.includes('Authentication')) {
-                clearAuth();
-                this.updateAuthUI();
-                alert('Authentication required. Please login again.');
-            } else {
-                alert('Failed to clear status. Please try again.');
-            }
+            alert('Failed to clear status. Please try again.');
         }
     }
 
