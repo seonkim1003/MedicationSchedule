@@ -126,10 +126,6 @@ class MedicationTracker {
         // Reload data for the new profile
         this.loadData().then(() => {
             this.renderCalendar();
-            // If on data tab, refresh it too
-            if (document.getElementById('dataTab').classList.contains('active')) {
-                this.renderDataView();
-            }
         });
     }
 
@@ -229,10 +225,6 @@ class MedicationTracker {
         // Tab switching
         document.getElementById('calendarTab').addEventListener('click', () => {
             this.switchTab('calendar');
-        });
-
-        document.getElementById('dataTab').addEventListener('click', () => {
-            this.switchTab('data');
         });
 
         // Close modals on outside click
@@ -851,10 +843,6 @@ class MedicationTracker {
         if (tabName === 'calendar') {
             document.getElementById('calendarTab').classList.add('active');
             document.getElementById('calendarContent').classList.add('active');
-        } else if (tabName === 'data') {
-            document.getElementById('dataTab').classList.add('active');
-            document.getElementById('dataContent').classList.add('active');
-            this.renderDataView();
         }
     }
 
